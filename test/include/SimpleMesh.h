@@ -1,3 +1,12 @@
+//TODO: License
+
+
+#pragma once
+
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
+
 //OpenMesh
 //MeshIO header needs to be included before mesh type
 #pragma warning(push)
@@ -6,18 +15,21 @@
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #pragma warning(pop)
 
-template <typename ScalarType>
-struct OMTraitsImpl : public OpenMesh::DefaultTraits
+namespace DMB
 {
-    typedef OpenMesh::VectorT<ScalarType, 3> Point; // use float-values points
-    typedef OpenMesh::VectorT<ScalarType, 3> Normal; // use float-values normals
+    template <typename ScalarType>
+    struct OMTraitsImpl : public OpenMesh::DefaultTraits
+    {
+        typedef OpenMesh::VectorT<ScalarType, 3> Point; // use float-values points
+        typedef OpenMesh::VectorT<ScalarType, 3> Normal; // use float-values normals
 
-    VertexAttributes(OpenMesh::Attributes::Status | OpenMesh::Attributes::Normal | OpenMesh::Attributes::Color | OpenMesh::Attributes::TexCoord2D);
-    FaceAttributes(OpenMesh::Attributes::Status | OpenMesh::Attributes::Normal | OpenMesh::Attributes::Color);
-    EdgeAttributes(OpenMesh::Attributes::Status | OpenMesh::Attributes::Normal);
-    HalfedgeAttributes(OpenMesh::Attributes::Status);
-};
+        VertexAttributes(OpenMesh::Attributes::Status | OpenMesh::Attributes::Normal | OpenMesh::Attributes::Color | OpenMesh::Attributes::TexCoord2D);
+        FaceAttributes(OpenMesh::Attributes::Status | OpenMesh::Attributes::Normal | OpenMesh::Attributes::Color);
+        EdgeAttributes(OpenMesh::Attributes::Status | OpenMesh::Attributes::Normal);
+        HalfedgeAttributes(OpenMesh::Attributes::Status);
+    };
 
-using OMFloatTraits = OMTraitsImpl<float>;
+    using OMFloatTraits = OMTraitsImpl<float>;
 
-using SimpleMesh = OpenMesh::TriMesh_ArrayKernelT<OMFloatTraits>;
+    using SimpleMesh = OpenMesh::TriMesh_ArrayKernelT<OMFloatTraits>;
+}
