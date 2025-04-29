@@ -1,0 +1,178 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9296b2d..23ddda7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -78,6 +78,7 @@ endif()
+ target_link_libraries(${PROJECT_NAME} PUBLIC shewchuk_predicates tbb)
+ 
+ target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/external/abseil-cpp/)
++target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/external/parallel-hashmap/)
+ 
+ # Compiler-specific options
+ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+diff --git a/code/solve_intersections.cpp b/code/solve_intersections.cpp
+index d80851f..c8b8558 100644
+--- a/code/solve_intersections.cpp
++++ b/code/solve_intersections.cpp
+@@ -39,8 +39,6 @@
+ #include <iostream>
+ 
+ 
+-bool parallel_value = true;
+-
+ inline void meshArrangementPipeline(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, const std::vector< std::bitset<NBIT> > &in_labels, point_arena &arena,
+                                     std::vector<genericPoint*> &vertices, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels, bool parallel)
+ {
+@@ -53,11 +51,11 @@ inline void meshArrangementPipeline(const std::vector<double> &in_coords, const
+     std::vector<uint> tmp_tris;
+     std::vector< std::bitset<NBIT> > tmp_labels;
+ 
+-    mergeDuplicatedVertices(in_coords, in_tris, arena, vertices, tmp_tris, parallel_value);
++    mergeDuplicatedVertices(in_coords, in_tris, arena, vertices, tmp_tris, parallel);
+ 
+     removeDegenerateAndDuplicatedTriangles(vertices, in_labels, tmp_tris, tmp_labels);
+ 
+-    TriangleSoup ts(arena, vertices, tmp_tris, tmp_labels, multiplier, parallel_value);
++    TriangleSoup ts(arena, vertices, tmp_tris, tmp_labels, multiplier, parallel);
+ 
+     detectIntersections(ts, g.intersectionList());
+ 
+@@ -65,7 +63,7 @@ inline void meshArrangementPipeline(const std::vector<double> &in_coords, const
+ 
+     classifyIntersections(ts, arena, g);
+ 
+-    triangulation(ts, arena, g, out_tris, out_labels, parallel_value);
++    triangulation(ts, arena, g, out_tris, out_labels, parallel);
+ 
+     ts.appendJollyPoints();
+ }
+@@ -73,12 +71,12 @@ inline void meshArrangementPipeline(const std::vector<double> &in_coords, const
+ //::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+ 
+ inline void solveIntersections(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, point_arena &arena,
+-                               std::vector<double> &out_coords, std::vector<uint> &out_tris)
++                               std::vector<double> &out_coords, std::vector<uint> &out_tris, bool parallel)
+ {
+     std::vector<genericPoint*> vertices;
+     std::vector< std::bitset<NBIT>> tmp_in_labels(in_tris.size() / 3), out_labels;
+ 
+-    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, vertices, out_tris, out_labels);
++    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, vertices, out_tris, out_labels, parallel);
+ 
+     computeApproximateCoordinates(vertices, out_coords);
+     freePointsMemory(vertices);
+@@ -87,17 +85,17 @@ inline void solveIntersections(const std::vector<double> &in_coords, const std::
+ //::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+ 
+ inline void solveIntersections(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, point_arena &arena,
+-                               std::vector<genericPoint *> &out_vertices, std::vector<uint> &out_tris)
++                               std::vector<genericPoint *> &out_vertices, std::vector<uint> &out_tris, bool parallel)
+ {
+     std::vector< std::bitset<NBIT>> tmp_in_labels(in_tris.size() / 3), out_labels;
+ 
+-    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, out_vertices, out_tris, out_labels, parallel_value);
++    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, out_vertices, out_tris, out_labels, parallel);
+ }
+ 
+ //::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+ 
+ inline void solveIntersections(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, const std::vector<uint> &in_labels, point_arena &arena,
+-                                  std::vector<double> &out_coords, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels)
++                                  std::vector<double> &out_coords, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels, bool parallel)
+ {
+     std::vector<genericPoint*> vertices;
+     std::vector< std::bitset<NBIT>> tmp_in_labels(in_labels.size());
+@@ -105,7 +103,7 @@ inline void solveIntersections(const std::vector<double> &in_coords, const std::
+     for(uint i = 0; i < in_labels.size(); i++)
+         tmp_in_labels[i][in_labels[i]] = 1;
+ 
+-    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, vertices, out_tris, out_labels);
++    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, vertices, out_tris, out_labels, parallel);
+ 
+     computeApproximateCoordinates(vertices, out_coords);
+     freePointsMemory(vertices);
+@@ -114,12 +112,12 @@ inline void solveIntersections(const std::vector<double> &in_coords, const std::
+ //::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+ 
+ inline void solveIntersections(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, const std::vector<uint> &in_labels, point_arena &arena,
+-                               std::vector<genericPoint *> &vertices, std::vector<uint> &out_tris, std::vector<std::bitset<NBIT> > &out_labels)
++                               std::vector<genericPoint *> &vertices, std::vector<uint> &out_tris, std::vector<std::bitset<NBIT> > &out_labels, bool parallel)
+ {
+     std::vector< std::bitset<NBIT>> tmp_in_labels(in_labels.size());
+ 
+     for(uint i = 0; i < in_labels.size(); i++)
+         tmp_in_labels[i][in_labels[i]] = 1;
+ 
+-    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, vertices, out_tris, out_labels);
++    meshArrangementPipeline(in_coords, in_tris, tmp_in_labels, arena, vertices, out_tris, out_labels, parallel);
+ }
+diff --git a/code/solve_intersections.h b/code/solve_intersections.h
+index 4bd3050..321f55d 100644
+--- a/code/solve_intersections.h
++++ b/code/solve_intersections.h
+@@ -51,7 +51,7 @@
+ * Use one of the solveInterctions functions to interface whit it.
+ */
+ inline void meshArrangementPipeline(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, const std::vector< std::bitset<NBIT> > &in_labels, point_arena &arena,
+-                                    std::vector<genericPoint*> &out_vertices, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels);
++                                    std::vector<genericPoint*> &out_vertices, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels, bool parallel);
+ 
+ 
+ /**
+@@ -65,7 +65,7 @@ inline void meshArrangementPipeline(const std::vector<double> &in_coords, const
+  * @param out_tris: the indices of the vertices of the output triangles
+  */
+ inline void solveIntersections(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, point_arena &arena,
+-                               std::vector<double> &out_coords, std::vector<uint> &out_tris);
++                               std::vector<double> &out_coords, std::vector<uint> &out_tris, bool parallel);
+ 
+ 
+ /**
+@@ -100,7 +100,7 @@ inline void solveIntersections(const std::vector<double> &in_coords, const std::
+  * @param out_labels: a vector of bitset containing, for each output triangle, the set of labels of the generating input triangles
+  */
+ inline void solveIntersections(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, const std::vector<uint> &in_labels, point_arena &arena,
+-                               std::vector<double> &out_coords, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels);
++                               std::vector<double> &out_coords, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels, bool parallel);
+ 
+ 
+ /**
+@@ -120,7 +120,7 @@ inline void solveIntersections(const std::vector<double> &in_coords, const std::
+  * - remember to free the dynamic allocated memory of the implicit points by calling the freePointsMemory(...) function contained in processing.h
+  */
+ inline void solveIntersections(const std::vector<double> &in_coords, const std::vector<uint> &in_tris, const std::vector<uint> &in_labels, point_arena &arena,
+-                               std::vector<genericPoint*> &vertices, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels);
++                               std::vector<genericPoint*> &vertices, std::vector<uint> &out_tris, std::vector< std::bitset<NBIT> > &out_labels, bool parallel);
+ 
+ 
+ #include "solve_intersections.cpp"
+diff --git a/code/triangle_soup.h b/code/triangle_soup.h
+index ff9dd18..b150f3a 100644
+--- a/code/triangle_soup.h
++++ b/code/triangle_soup.h
+@@ -39,10 +39,11 @@
+ #define TRIANGLESOUP_H
+ 
+ #include "common.h"
++#include <bit>
+ #include <implicit_point.h>
+ 
+ #include <cinolib/geometry/vec_mat.h>
+-#include "../external/parallel-hashmap/parallel_hashmap/phmap.h"
++#include <parallel_hashmap/phmap.h>
+ #include <tbb/tbb.h>
+ 
+ #include "utils.h"
+diff --git a/main.cpp b/main.cpp
+index c978846..e059acf 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -69,7 +69,7 @@ int main(int argc, char **argv)
+      * There are 4 versions of the solveIntersections function. Please
+      * refer to the solve_intersections.h file to see how to use them. */
+ 
+-    solveIntersections(in_coords, in_tris, arena, gen_points, out_tris);
++    solveIntersections(in_coords, in_tris, arena, gen_points, out_tris, true);
+ 
+     computeApproximateCoordinates(gen_points, out_coords);
+ 
