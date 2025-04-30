@@ -2665,8 +2665,7 @@ inline std::shared_ptr <typename DMB::MatrixMesh<MeshType>::tFWN> DMB::MatrixMes
 
     m_mesh.update_normals();
     auto acc = std::make_shared<tFWN>();
-    acc->setMesh(m_mesh);
-    acc->build();
+    acc->build(m_mesh);
 
     return acc;
 }

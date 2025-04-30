@@ -134,26 +134,17 @@ void FWNSpeedTest(DMB::SimpleMesh& m)
 
 int main(int argc, char** argv)
 {
+    //for (auto fn : { "C:/skola/PhD/Samples/booleans/sphere_9x6.obj" , "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/jaw.obj" })
+    //{
+    //    std::cout << fn << std::endl;
 
+    //    DMB::SimpleMesh m;
+    //    OpenMesh::IO::read_mesh(m, fn);
+    //    FWNTreeTest(m);
+    //    FWNSpeedTest(m);
+    //}
 
-
-	////OpenMesh::IO::read_mesh(m, "C:/skola/PhD/Samples/booleans/result19.obj");
-//    m.update_normals();
-
-    
-
-    for (auto fn : { "C:/skola/PhD/Samples/booleans/sphere_9x6.obj" , "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/jaw.obj" })
-    {
-        std::cout << fn << std::endl;
-
-        DMB::SimpleMesh m;
-        OpenMesh::IO::read_mesh(m, fn);
-        FWNTreeTest(m);
-        FWNSpeedTest(m);
-    }
-
-    //DMB::SimpleMesh m;
-    //DMB::meshUnion(m, "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/101954.stl", "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/894835.stl");
-    
-
+    DMB::SimpleMesh m;
+    DMB::meshUnion(m, "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/101954.stl", "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/894835.stl");
+    OpenMesh::IO::write_mesh(m, "out.obj");
 }
