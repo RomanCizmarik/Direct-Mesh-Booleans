@@ -170,6 +170,11 @@ namespace DMB
             //TODO: do not compute for leaf nodes?
             for (int nodeIndex = 0; nodeIndex < m_tree.nodes().size(); ++nodeIndex)
             {
+                if (m_tree.node(nodeIndex).isLeaf())
+                {
+                    continue;
+                }
+
                 m_dipoles[nodeIndex] = Dipole(mesh, m_tree.nodeFaces(nodeIndex), faceAreaProp.getRawProperty(), centroidProp.getRawProperty(), 2.0f);
             }
         }
@@ -182,9 +187,9 @@ namespace DMB
             const auto& node = m_tree.node(nodeIdx);
 
             //can we use approximation?
-            if (/*m_dipoles[nodeIdx] && */ !node.isLeaf() && m_dipoles[nodeIdx].canUseFWNApproximation(p))
+            if (m_dipoles[nodeIdx] && m_dipoles[nodeIdx]->canUseFWNApproximation(p))
             {
-                wn += m_dipoles[nodeIdx].order2Approx(p);
+                wn += m_dipoles[nodeIdx]->order2Approx(p);
             }
             else
             {
@@ -209,7 +214,7 @@ namespace DMB
     private: //properties
         AABBTree<MeshType> m_tree;
 
-        std::vector<Dipole> m_dipoles;
+        std::vector<std::optional<Dipole>> m_dipoles;
 
         //std::weak_ptr<MeshType> m_mesh;
         const MeshType* m_mesh; //TODO: rework to weak_ptr?
