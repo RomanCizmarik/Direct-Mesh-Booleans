@@ -208,19 +208,6 @@ namespace DMB
         }
 
 
-
-        //TODO: enable after testing
-#if 0
-            //TODO: This is for mesh cut, REDO THIS!!
-            //make the functor an optional input
-        OpenMesh::FProp<std::bitset<NBIT>> faceOriginLabel(result.getMeshNonCost(), "bo_faceOriginLabel");
-        result.copyMeshProperties([&faceOriginLabel](MatrixMesh<MeshType>& matrixMesh, MeshType& mesh, tFaceHandle fh, uint tId)
-            {
-                faceOriginLabel[fh] = matrixMesh.m_faceOriginLabel[tId];
-            });
-#endif
-
-
         output = result.getClearMesh();
 
         if (timings)

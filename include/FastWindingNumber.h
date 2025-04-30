@@ -145,6 +145,11 @@ namespace DMB
             buildWindingNumberCache(mesh);
         }
 
+        bool inside(const tPoint& p) const
+        {
+            return windingNumber(p) > 0.5;
+        }
+
         double windingNumber(const tPoint& p) const
         {
             return evaluateWindingNumber(p, 0);

@@ -138,6 +138,34 @@ namespace DMB
         return m;
     }
 
+    template<typename Mesh>
+    void OpenMesh2Matrix(const Mesh& mesh, Eigen::MatrixXd& V, Eigen::MatrixXi& F)
+    {
+        assert(mesh.is_trimesh());
+
+        V.resize(mesh.n_vertices(), 3);
+        F.resize(mesh.n_faces(), 3);
+
+        for (auto vh : mesh.vertices())
+        {
+            const auto& p = mesh.point(vh);
+            V(vh.idx(), 0) = p[0];
+            V(vh.idx(), 1) = p[1];
+            V(vh.idx(), 2) = p[2];
+        }
+
+        for (auto fh : mesh.faces())
+        {
+            int vi = 0;
+            for (auto vh : fh.vertices())
+            {
+                F(fh.idx(), vi) = vh.idx();
+                vi++;
+            }
+        }
+
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //!\brief   Calculates solid angle of a triangle projected onto a sphere.
     //! This is used for computing winding numbers generalized to three dimensions.
