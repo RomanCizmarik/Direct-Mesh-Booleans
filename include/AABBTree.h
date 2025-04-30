@@ -195,7 +195,15 @@ namespace DMB
         struct AABBTreeNode
         {
             std::span<tFace> faces;
+            tBoundingBox bb;
             int depth = 0;
+            int leftNode = -1;
+            int rightNode = -1;
+
+            bool isLeaf() const
+            {
+                return leftNode == -1 && rightNode == -1;
+            }
         };
 
 
@@ -219,13 +227,37 @@ namespace DMB
             std::copy(mesh.faces_begin(), mesh.faces_end(), m_faces.begin());
 
             buildInternal(mesh);
+        }
 
+        const AABBTreeNode& node(size_t idx) const
+        {
+            assert(idx < m_nodes.size());
+
+            return m_nodes[idx];
+        }
+
+        const std::vector<AABBTreeNode>& nodes() const
+        {
+            return m_nodes;
+        }
+
+        const std::span<tFace>& nodeFaces(size_t idx) const
+        {
+            assert(idx < m_nodes.size());
+
+            return m_nodes[idx].faces;
         }
 
     private: // methods
 
         void buildInternal(const MeshType& mesh)
         {
+
+            auto createNewNode = []()
+                {
+
+                };
+
             auto centroidProp = OpenMesh::makeTemporaryProperty<tFace, tPoint>(const_cast<MeshType&>(mesh));
 
             // compute face centroids
@@ -237,15 +269,12 @@ namespace DMB
             AABBTreeNode rootNode;
             rootNode.faces = std::span<tFace>(m_faces.begin(), m_faces.end());
             rootNode.depth = 0;
+            rootNode.bb = calcFacesBoundingBox(mesh, m_faces.begin(), m_faces.end());
+
             m_nodes.push_back(std::move(rootNode));
 
             std::stack< size_t > nodesToProcess;
             nodesToProcess.push(m_nodes.size() - 1);
-            //std::stack< std::vector<AABBTreeNode>::iterator > nodesToProcess;
-            //nodesToProcess.push(m_nodes.end() - 1);
-
-            //std::stack< AABBTreeNode*> nodesToProcess;
-            //nodesToProcess.push(&m_nodes.back());
 
             while (!nodesToProcess.empty())
             {
@@ -295,29 +324,24 @@ namespace DMB
                 AABBTreeNode nodeLeft;
                 nodeLeft.faces = std::span<tFace>(node.faces.begin(), partitionIt);
                 nodeLeft.depth = node.depth + 1;
+                nodeLeft.bb = calcFacesBoundingBox(mesh, nodeLeft.faces.begin(), nodeLeft.faces.end());
 
                 AABBTreeNode nodeRight;
                 nodeRight.faces = std::span<tFace>(partitionIt, node.faces.end());
                 nodeRight.depth = node.depth + 1;
+                nodeRight.bb = calcFacesBoundingBox(mesh, nodeRight.faces.begin(), nodeRight.faces.end());
 
                 //this node processed
                 nodesToProcess.pop();
 
                 //add new nodes
                 m_nodes.push_back(std::move(nodeLeft));
-                //m_nodes.push_back(nodeLeft);
-                //nodesToProcess.push(&m_nodes.back());
-                //nodesToProcess.push(&m_nodes[m_nodes.size()-1]);
-                //nodesToProcess.push(m_nodes.end() - 1);
                 nodesToProcess.push(m_nodes.size() - 1);
+                m_nodes[nodeIdx].leftNode = m_nodes.size() - 1;
 
-                //m_nodes.push_back(nodeRight);
                 m_nodes.push_back(std::move(nodeRight));
-                //nodesToProcess.push(&m_nodes.back());
-                //nodesToProcess.push(&m_nodes[m_nodes.size() - 1]);
-                //nodesToProcess.push(m_nodes.end() - 1);
                 nodesToProcess.push(m_nodes.size() - 1);
-
+                m_nodes[nodeIdx].rightNode = m_nodes.size() - 1;
             }
 
         }
