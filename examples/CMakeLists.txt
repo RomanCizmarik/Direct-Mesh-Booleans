@@ -21,7 +21,7 @@ target_include_directories(DirectMeshBooleansExample PRIVATE "${CMAKE_CURRENT_SO
 #target_include_directories(DirectMeshBooleansExampleTest PUBLIC ${cinolib_SOURCE_DIR}/include/)
 #target_include_directories(DirectMeshBooleansExampleTest PUBLIC ${indirect_predicates_SOURCE_DIR}/include/)
 
-target_link_libraries(DirectMeshBooleansExample PUBLIC DirectMeshBooleans OpenMeshCore)  # OpenMeshCore OpenMeshTools Eigen3::Eigen tbb
+target_link_libraries(DirectMeshBooleansExample PUBLIC DirectMeshBooleans)  # OpenMeshCore OpenMeshTools Eigen3::Eigen tbb
 
 if (MSVC)
 	target_link_options(DirectMeshBooleansExample PRIVATE "/SUBSYSTEM:CONSOLE")
