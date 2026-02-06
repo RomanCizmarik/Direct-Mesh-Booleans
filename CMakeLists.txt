@@ -22,8 +22,6 @@ set(TBB_EXAMPLES OFF CACHE BOOL " " FORCE)
 
 add_library(DirectMeshBooleans)
 
-
-
 add_compile_definitions(DirectMeshBooleans PUBLIC _HAS_STD_BYTE=0)
 target_compile_definitions(DirectMeshBooleans PUBLIC TBB_PARALLEL=1)
 target_compile_definitions(DirectMeshBooleans PUBLIC CINOLIB_USES_SHEWCHUK_PREDICATES)
@@ -223,8 +221,16 @@ target_link_libraries(${PROJECT_NAME} PUBLIC OpenMeshCore OpenMeshTools eigen sh
 #Exported alias name
 #add_library(DirectMeshBooleans::DirectMeshBooleans ALIAS DirectMeshBooleans)
 
+
+# Build unit tests if requested
+option(DMB_BUILD_UNIT_TESTS "Build unit tests" OFF)
+if(DMB_BUILD_UNIT_TESTS)
+    add_subdirectory(tests)
+endif()
+
+
 # Add example dir if requested
-option(DMB_BUILD_EXAMPLES "Build example applications" ON)
+option(DMB_BUILD_EXAMPLES "Build example applications" OFF)
 if(DMB_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
