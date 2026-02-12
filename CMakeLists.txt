@@ -83,9 +83,14 @@ else()
         GIT_TAG d6689a15d75e0af62a5f0f6112f6b75c50947eea
     )
 
-    set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-    set(EIGEN_MPL2_ONLY ON CACHE BOOL "" FORCE)
-    set(EIGEN_INSTALL OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF)
+    set(EIGEN_BUILD_TESTING OFF)
+    set(EIGEN_MPL2_ONLY ON)
+    set(EIGEN_BUILD_PKGCONFIG OFF)
+    set(EIGEN_BUILD_DOC OFF)
+    set(EIGEN_INSTALL ON)
+    #set(INCLUDE_INSTALL_DIR ON)
+    set(EIGEN_BUILD_CMAKE_PACKAGE ON)
 
     FetchContent_MakeAvailable(Eigen)
 
@@ -172,15 +177,16 @@ else()
 endif()
 
 # ============================================================
-# Link DMB (ONLY its real dependencies)
+# Link DMB 
 # ============================================================
 target_link_libraries(DirectMeshBooleans
     PUBLIC
-        FaRMA
         Eigen3::Eigen
         OpenMeshCore
         OpenMeshTools
+        $<BUILD_INTERFACE:FaRMA>#FaRMA
 )
+
 
 # ============================================================
 # Sources
@@ -224,3 +230,51 @@ endif()
 if(DMB_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
+
+
+# ============================================================
+# Install & Package configuration
+# ============================================================
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+
+install(
+    TARGETS DirectMeshBooleans
+    EXPORT DirectMeshBooleansTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+
+install(
+    EXPORT DirectMeshBooleansTargets
+    NAMESPACE DirectMeshBooleans::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/DirectMeshBooleans
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/DirectMeshBooleansConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DirectMeshBooleansConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/DirectMeshBooleansConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/DirectMeshBooleans
+)
+
+install(
+    FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/DirectMeshBooleansConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/DirectMeshBooleansConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/DirectMeshBooleans
+)
