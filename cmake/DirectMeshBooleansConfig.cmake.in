@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Dependencies required by the public API
+find_dependency(Eigen3)
+find_dependency(OpenMesh)
+#find_dependency(FaRMA)
+
+include("${CMAKE_CURRENT_LIST_DIR}/DirectMeshBooleansTargets.cmake")
