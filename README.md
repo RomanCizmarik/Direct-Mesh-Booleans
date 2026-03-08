@@ -1,5 +1,7 @@
 # Direct-Mesh-Booleans
 
+<img width="11162" height="2338" alt="presentation_title_image" src="https://github.com/user-attachments/assets/6a5428c9-3b88-4c07-9cca-abbe1b1dc40b" />
+
 This is the implementation of "Direct Mesh Booleans: A Step Towards Non-Restrictive Boolean Operations."
 
 ## Overview
