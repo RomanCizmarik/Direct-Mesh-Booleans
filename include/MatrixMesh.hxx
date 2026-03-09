@@ -2874,42 +2874,6 @@ inline int DMB::MatrixMesh<MeshType>::calcVolumeSignExact(const std::vector<Open
     return calcSignedVolumeExact(component).sgn();
 }
 
-template<typename MeshType>
-inline void DMB::MatrixMesh<MeshType>::debug_CouldNotAddFace(tVertexHandle v0, tVertexHandle v1, tVertexHandle v2)
-{
-    for (auto fh : m_mesh.faces())
-    {
-        m_mesh.set_color(fh, { 192,192,192 });
-    }
-
-    m_mesh.update_normals();
-    T3D_VDT_STORE_NAMED_MESH_AND_WAIT("", m_mesh);
-
-    MeshType failedFace;
-    auto vh0 = failedFace.add_vertex(m_mesh.point(v0));
-    auto vh1 = failedFace.add_vertex(m_mesh.point(v1));
-    auto vh2 = failedFace.add_vertex(m_mesh.point(v2));
-
-    auto fh = failedFace.add_face(vh0, vh1, vh2);
-
-    failedFace.set_color(fh, { 255,0,0 });
-
-    failedFace.update_normals();
-    T3D_VDT_STORE_NAMED_MESH_AND_WAIT("", failedFace);
-
-}
-
-template<typename MeshType>
-inline void DMB::MatrixMesh<MeshType>::debug_CurrentMesh()
-{
-    for (auto fh : m_mesh.faces())
-    {
-        m_mesh.set_color(fh, { 192,192,192 });
-    }
-
-    m_mesh.update_normals();
-    T3D_VDT_STORE_NAMED_MESH_AND_WAIT("", m_mesh);
-}
 
 template<typename MeshType>
 template<typename F>

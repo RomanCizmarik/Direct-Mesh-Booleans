@@ -11,163 +11,22 @@
 
 #include "Booleans.h"
 
-void FWNTreeTest(DMB::SimpleMesh& m)
-{
-    //generate random points
-    std::vector<DMB::SimpleMesh::Point> randomPoints;
-    {
-        Eigen::MatrixXd V;
-        Eigen::MatrixXi F;
-
-        DMB::OpenMesh2Matrix(m, V, F);
-
-        int nPoints = 100;
-
-        // Generate a list of random query points in the bounding box
-        Eigen::MatrixXd Q = Eigen::MatrixXd::Random(nPoints, 3);
-        const Eigen::RowVector3d Vmin = V.colwise().minCoeff();
-        const Eigen::RowVector3d Vmax = V.colwise().maxCoeff();
-        const Eigen::RowVector3d Vdiag = Vmax - Vmin;
-        for (int q = 0; q < Q.rows(); q++)
-        {
-            Q.row(q) = (Q.row(q).array() * 0.5 + 0.5) * Vdiag.array() + Vmin.array();
-        }
-
-        for (int q = 0; q < Q.rows(); q++)
-        {
-            randomPoints.push_back({ Q.row(q).coeff(0),Q.row(q).coeff(1),Q.row(q).coeff(2) });
-        }
-    }
-
-    DMB::FastWindingNumber< DMB::SimpleMesh > tree;
-
-    m.update_face_normals();
-    tree.build(m);
-
-    for (auto i = 0; i < randomPoints.size(); ++i)
-    {
-        auto fastResult = tree.windingNumber(randomPoints[i]);
-        auto exactResult = DMB::windingNumber(m, randomPoints[i]);
-
-        auto insideFast = fastResult > 0.5;
-        auto insideExact = exactResult > 0.5;
-
-        //EXPECT_NEAR(fastResult, exactResult, 0.045);
-
-
-        //if (std::abs(fastResult - exactResult) > 1e-2)
-        if(insideFast != insideExact)
-        {
-            std::cout << "FWN approximation incorrect!" << std::endl;
-            //std::cout << "fast wn: " << fastResult << std::endl;
-            //std::cout << "wn: " << exactResult << std::endl;
-            std::cout << "difference: " << std::abs(fastResult - exactResult) << std::endl;
-        }
-    }
-
-}
-
-template<typename FunctionType>
-void time(std::string taskName, const FunctionType& func)
-{
-    auto t_before = clock();
-    func();
-    const double t_after = clock();
-
-    std::cout << "Task " + taskName + " took: " << ((t_after - t_before) / (CLOCKS_PER_SEC / 1000)) << " miliseconds" << std::endl;
-};
-
-void FWNSpeedTest(DMB::SimpleMesh& m)
-{
-    //generate random points
-    std::vector<DMB::SimpleMesh::Point> randomPoints;
-    {
-        Eigen::MatrixXd V;
-        Eigen::MatrixXi F;
-
-        DMB::OpenMesh2Matrix(m, V, F);
-
-        int nPoints = 100;
-
-        // Generate a list of random query points in the bounding box
-        Eigen::MatrixXd Q = Eigen::MatrixXd::Random(nPoints, 3);
-        const Eigen::RowVector3d Vmin = V.colwise().minCoeff();
-        const Eigen::RowVector3d Vmax = V.colwise().maxCoeff();
-        const Eigen::RowVector3d Vdiag = Vmax - Vmin;
-        for (int q = 0; q < Q.rows(); q++)
-        {
-            Q.row(q) = (Q.row(q).array() * 0.5 + 0.5) * Vdiag.array() + Vmin.array();
-        }
-
-        for (int q = 0; q < Q.rows(); q++)
-        {
-            randomPoints.push_back({ Q.row(q).coeff(0),Q.row(q).coeff(1),Q.row(q).coeff(2) });
-        }
-    }
-
-    DMB::FastWindingNumber< DMB::SimpleMesh > tree;
-
-
-    time("FWN init", [&]
-        {
-            m.update_face_normals();
-            tree.build(m);
-        });
-
-    time("FWN compute", [&]
-        {
-            for (auto i = 0; i < randomPoints.size(); ++i)
-            {
-                auto fastResult = tree.windingNumber(randomPoints[i]);
-            }
-        });
-
-    time("Exact WN compute", [&]
-        {
-            for (auto i = 0; i < randomPoints.size(); ++i)
-            {
-                auto exactResult = DMB::windingNumber(m, randomPoints[i]);
-            }
-        });
-}
-
-
-//int main(int argc, char** argv)
-//{
-//    //for (auto fn : { "C:/skola/PhD/Samples/booleans/sphere_9x6.obj" , "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/jaw.obj" })
-//    //{
-//    //    std::cout << fn << std::endl;
-//
-//    //    DMB::SimpleMesh m;
-//    //    OpenMesh::IO::read_mesh(m, fn);
-//    //    FWNTreeTest(m);
-//    //    FWNSpeedTest(m);
-//    //}
-//
-//    //DMB::SimpleMesh m;
-//    //DMB::meshUnion(m, "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/101954.stl", "C:/skola/PhD/VUT/booleans_paper/evaluation/Validity/input_models/894835.stl");
-//    //OpenMesh::IO::write_mesh(m, "out.obj");
-//
-//
-//
-//    return 0;
-//}
-
 
 bool printHelp(const std::map<std::string, std::string>& arguments)
 {
     if (arguments.find("h") != arguments.end() || arguments.find("help") != arguments.end())
     {
         std::cout <<
-            "This executable is ment for running an algorithm as a separate process. \n"
-            "To run an algorithm, share your data via shared memory and specify the algorithm to run using -algorithm parameter. \n"
-            "\n"
-            "Parameters: \n"
-            "-algorithm:NAME_OF_ALGORITHM_TO_RUN    Runs algorithm specified by the string NAME_OF_ALGORITHM_TO_RUN. \n"
-            "-h                                     Shows this help. \n"
-            "-help                                  Shows this help. \n"
-            "Example usage: \n"
-            "./BSPWorker.exe -algorithm:BooleanUnion"
+            "This executable loads two input meshes and computes requested Boolean operation (Union, Difference, or Intersection). " 
+            "If output file path is provided, the result will be saved to the file specified. \n"
+            "Supported formats for input and output files are: .OBJ, .OFF, .STL.\n"
+            "Arguments of this executable:\n"
+            "[U|I|D] : Specifies the Boolean operation to compute - Union, Intersection, or Difference\n"
+            "input1 - Path to the first input mesh file.\n"
+            "input2 - Path to the second input mesh file.\n"
+            "output - Path to the output mesh file.\n"
+            "Usage:\n"
+            "DirectMeshBooleansExample.exe [U|D|I] input1 input2 outputPath\n"
             << std::endl;
         return true;
     }

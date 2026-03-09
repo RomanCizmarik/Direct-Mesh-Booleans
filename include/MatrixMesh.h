@@ -233,8 +233,6 @@ namespace DMB
         bigfloat calcSignedVolumeExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
         int calcVolumeSignExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
 
-        void debug_CouldNotAddFace(tVertexHandle v0, tVertexHandle v1, tVertexHandle v2);
-        void debug_CurrentMesh();
 
         template<typename F>
         void debug_showMesh(const F& func);

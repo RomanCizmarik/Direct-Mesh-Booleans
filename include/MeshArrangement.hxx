@@ -760,7 +760,6 @@ inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
     }
 
     //debugMesh.update_normals();
-    //T3D_VDT_STORE_NAMED_MESH_AND_WAIT("", debugMesh);
 
     OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
     //opt += OpenMesh::IO::Options::FaceColor;
@@ -812,5 +811,4 @@ inline void DMB::MeshArrangement<MeshType>::debug_showMesh(const F& func)
     }
 
     debugMesh.update_normals();
-    T3D_VDT_STORE_NAMED_MESH_AND_WAIT("", debugMesh);
 }
