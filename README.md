@@ -5,9 +5,9 @@
 This is the implementation of "Direct Mesh Booleans: A Step Towards Non-Restrictive Boolean Operations."
 
 ## Overview
-This repository contains a library (DirectMeshBooleans.lib) for computing Boolean operations. Currently, Union, Intersection, and Difference are supported.  
-Optionally, an executable example that loads input meshes and runs a Boolean operation can be built. 
+This repository contains a library (DirectMeshBooleans.lib) for computing Boolean operations. Currently, Union, Intersection, and Difference are supported. The inputs may contain open boundaries, non-manifold, or self-intersecting geometry. Our method works with **triangle meshes only**.
 
+Optionally, an executable example that loads input meshes and runs a Boolean operation can be built. 
 ## Installation
 ### Prerequisites
 This project is using CMake > 3.24 ((https://cmake.org/).
@@ -21,21 +21,24 @@ By default, all the necessary dependencies are automatically downloaded and buil
 
 ### Setup
 Tested on Windows 11. 
-Simply clone the repository and run CMake > 3.24. This will automatically download and build all the dependencies.
+
+Simply clone the repository and run CMake > 3.24. This will **automatically** download and build all the dependencies.
+
 If needed, you can use ```DMB_PROVIDE_OWN_DEPENDENCIES``` option to provide your own version of the dependencies.
 
 ## Usage
-By default, only the DirectMeshBooleans is built.
-Option ```DMB_BUILD_EXAMPLES``` creates a target for a simple example application, which loads inputs and runs a Boolean operation.
+By default, only the ```DirectMeshBooleans``` library is built.
+Option ```DMB_BUILD_EXAMPLES``` creates a target for a simple example application ```DirectMeshBooleansExample```, which loads inputs and runs a Boolean operation.
 Example application usage:
 ```
 DirectMeshBooleansExample.exe [U|D|I] input1 input2 outputPath
 
 ```
 * ```[U|D|I]``` - Specifies requested Boolean operation **U**nion, **D**ifference or **I**ntersection.
-* ```input1``` - Path to the first input mesh file. Supported file formats are: OBJ, OFF, and STL. 
+* ```input1``` - Path to the first input mesh file.  
 * ```input2``` - Path to the second input mesh file.
 * ```output``` - Path to the output mesh file.
-* 
+
+Supported file formats for input and output files are: OBJ, OFF, and STL.
 ## Citate us
 TBD
