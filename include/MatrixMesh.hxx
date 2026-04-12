@@ -2118,7 +2118,7 @@ inline void DMB::MatrixMesh<MeshType>::adjustOrientation(MeshArrangement<MeshTyp
 }
 
 template<typename MeshType>
-inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<MeshType>& ma)
+inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other)
 {
     transferArrangementPropertiesToMesh();
     detectBoundaries();
@@ -2135,8 +2135,192 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
     OpenMesh::FProp<uint> pFhToMaFh(m_mesh, m_pFhToMaFh);
     OpenMesh::FProp<bool> coplanarFace(m_mesh, m_pCoplanarFace);
 
-
     OpenMesh::VProp<bool> intersectionVertex(false, m_mesh);
+
+    std::vector<std::vector<tFaceHandle>> components;
+
+    auto FWNBasedComponentSplit = [&, this](const std::vector<tFaceHandle>& component)
+        {
+            //TODO: THIS IS HIGHLY UNOPTIMAL!!! Use accessor, that rebuilds FWN only once for the whole run...
+            auto acc = other.getFWN();
+
+            OpenMesh::VProp<double> pFWN(0.0, m_mesh);
+            OpenMesh::VProp<bool> pNewVh(false, m_mesh);
+            OpenMesh::EProp<bool> pEdgeToSplit(false, m_mesh);
+
+            std::unordered_set<tVertexHandle> vertices;
+            std::unordered_set<tEdgeHandle> edgesToSplit;
+
+            for (auto fh : component)
+            {
+                for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
+                {
+                    vertices.insert(vh);
+                }
+            }
+
+            //compute FWN for each vertex of this component, except for the intersection vertices
+            for (auto vh : vertices)
+            {
+                if (intersectionVertex[vh])
+                {
+                    pFWN[vh] = 0.5;
+                }
+                else
+                {
+                    pFWN[vh] = acc->windingNumber(m_mesh.point(vh));
+
+                }
+
+            }
+
+            //DEBUG
+            for (auto vh : vertices)
+            {
+                m_mesh.set_color(vh, { 128, 128, 128 });
+            }
+
+
+            for (auto fh : component)
+            {
+                if (intersectionFace[fh])
+                {
+                    continue;
+                }
+
+                for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+                {
+                    if (intersectionVertex[eh.v0()] || intersectionVertex[eh.v1()])
+                    {
+                        continue;
+                    }
+
+                    auto wn0 = pFWN[eh.v0()];
+                    auto wn1 = pFWN[eh.v1()];
+
+                    if ((wn0 - 0.5) * (wn1 - 0.5) < 0 && std::fabs(wn0 - wn1) > 1e-2)
+                    {
+                        m_mesh.set_color(eh.v0(), (wn0 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
+                        m_mesh.set_color(eh.v1(), (wn1 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
+
+                        pEdgeToSplit[eh] = true;
+                        edgesToSplit.insert(eh);
+                    }
+                }
+            }
+
+
+            {
+                //MeshType meshPart;
+                //DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component);
+
+                OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                opt += OpenMesh::IO::Options::VertexColor;
+                OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) + ".ply", opt);
+            }
+
+            std::vector<OpenMesh::SmartVertexHandle> newVertices;
+            for (auto eh : edgesToSplit)
+            {
+                auto sEh = OpenMesh::make_smart(eh, m_mesh);
+                auto newVh = m_mesh.split(eh, (m_mesh.point(sEh.v0()) + m_mesh.point(sEh.v1())) * 0.5);
+                
+                pNewVh[newVh] = true;
+                newVertices.push_back(newVh);
+
+                //just to be double sure
+                for(auto eh : newVh.edges())
+                {
+                    pIntersectionEdge[eh] = false;
+
+                }
+            }
+
+            OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/after_split" + std::to_string(m_intLabel) + ".ply");
+
+            //mark new virtual intersection edges
+            for (auto newVh : newVertices)
+            {
+                for (auto he : newVh.outgoing_halfedges())
+                {
+                    if (pNewVh[he.to()] || intersectionVertex[he.to()])
+                    {
+                        pIntersectionEdge[he.edge()] = true;
+                    }
+                }
+            }
+
+
+
+
+            //TODO: MAKE LAMBDA OUT OF THIS!!!
+
+            //find components
+            for (auto fh : component)
+            {
+                if (m_mesh.status(fh).deleted())
+                {
+                    continue;
+                }
+
+                if (coplanarFace[fh])
+                {
+                    continue;
+                }
+
+                //found a new component seed face
+                if (!m_mesh.status(fh).tagged())
+                {
+                    std::queue<tFaceHandle> facesToVisit;
+                    std::vector<tFaceHandle> componentFaces;
+
+                    facesToVisit.push(fh);
+
+                    while (!facesToVisit.empty())
+                    {
+                        //get top face
+                        auto topFace = OpenMesh::make_smart(facesToVisit.front(), m_mesh);
+                        facesToVisit.pop();
+
+                        if (topFace.tagged() || topFace.deleted() || coplanarFace[topFace])
+                        {
+                            continue;
+                        }
+
+
+                        //store new component face
+                        componentFaces.push_back(topFace);
+
+                        //continue with adjacent face, but adjacencies through intersection edges are not allowed
+                        for (auto he : topFace.halfedges())
+                        {
+
+                            if (pIntersectionEdge[he.edge()] || pCoplanarEdge[he.edge()])
+                            {
+                                continue;
+                            }
+
+                            auto adjFace = he.opp().face();
+
+                            if (adjFace.is_valid() && !adjFace.tagged())
+                            {
+                                facesToVisit.push(adjFace);
+                            }
+
+                        }
+
+                        //mark this face as processed
+                        m_mesh.status(topFace).set_tagged(true);
+                    }
+
+                    //store this component
+                    components.push_back(componentFaces);
+                }
+            }
+
+
+
+        };
 
     //mark all intersection vertices
     for (auto eh : m_mesh.edges())
@@ -2174,9 +2358,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         m_mesh.status(fh).set_tagged(false);
     }
 
-    std::vector<std::vector<tFaceHandle>> components;
 
-    //find components
+    //split this component into new components
     for (auto fh : m_mesh.faces())
     {
         if (fh.deleted())
@@ -2255,6 +2438,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
     }
 #endif
 
+    //reset tagged 
+    for (auto fh : m_mesh.faces())
+    {
+        m_mesh.status(fh).set_tagged(false);
+    }
+
     std::vector<uint> notLabeledComponents;
     std::vector<std::bitset<NBIT>> componentsLabels;
 
@@ -2322,6 +2511,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             continue;
         }
 
+        //This assumes that the conflict will be resolved, either based on the volume voting or as e-surface. If not, further FWN based splitting will be applied.
+        bool useFloodLabeling = true;
 
         if (conflictingLabeling)
         {
@@ -2369,25 +2560,46 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                 if (val == maxVolume && seedLabel != key)
                 {
-                    //still conflicting => e-surface
-                    //conflictingLabeling = true;
-                    //TODO: I should put 0 in place of the input mesh, that labeled this face/component
-                    seedLabel = 0;
+                    std::cout << "volume:" << val << " label: " << key << " labeling component ids size: " << labelToLabelingComponentMap[key].size() << std::endl;
+
+                    if (std::fabs(val) > 1e-5)
+                    {
+                        //Volume is too big to use e-surface, use further FWN based splitting
+                        useFloodLabeling = false;
+
+                    }
+                    else
+                    {
+                        //still conflicting => e-surface
+                        //conflictingLabeling = true;
+                        //TODO (for variadic): I should put 0 in place of the input mesh, that labeled this face/component
+                        seedLabel = 0;
+                    }
                 }
             }
 
         }
 
-        //set labeling
-        if (!conflictingLabeling)
+        if (useFloodLabeling)
         {
-            for (auto fh : component)
+            //set labeling
+            if (!conflictingLabeling)
             {
-                labeling[fh] = seedLabel;
-            }
+                for (auto fh : component)
+                {
+                    labeling[fh] = seedLabel;
+                }
 
-            componentsLabels.push_back(seedLabel);
+                componentsLabels.push_back(seedLabel);
+            }
         }
+        else
+        {
+            //further FWN based component split
+            FWNBasedComponentSplit(component);
+        }
+
+        
     }
 
     //reset tagged

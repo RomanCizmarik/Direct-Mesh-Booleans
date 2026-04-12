@@ -104,7 +104,7 @@ namespace DMB
             }
         }
 
-        bool disconnectComponents(MeshArrangement<MeshType>& ma);
+        bool disconnectComponents(MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other);
 
         void classifyIsolatedComponents(MatrixMesh<MeshType>& other);
         std::shared_ptr<tFWN> getFWN();

@@ -169,12 +169,12 @@ namespace DMB
         left.copyMAProperties(copyFunctor);
         right.copyMAProperties(copyFunctor);
 
-        if (!left.disconnectComponents(ma))
+        if (!left.disconnectComponents(ma, right))
         {
             return false;
         }
 
-        if (!right.disconnectComponents(ma))
+        if (!right.disconnectComponents(ma, left))
         {
             return false;
         }
