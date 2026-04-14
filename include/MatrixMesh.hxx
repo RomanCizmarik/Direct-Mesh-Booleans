@@ -2222,6 +2222,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             std::vector<OpenMesh::SmartVertexHandle> newVertices;
             for (auto eh : edgesToSplit)
             {
+                //TODO: gather existing faces before -> get newly created faces after -> add the new vertex to ma (carefull with newly allocated point, probably use arena allocator?) -> add new faces to ma -> update all mappings and properties, copy from ma/to ma
                 auto sEh = OpenMesh::make_smart(eh, m_mesh);
                 auto newVh = m_mesh.split(eh, (m_mesh.point(sEh.v0()) + m_mesh.point(sEh.v1())) * 0.5);
                 
