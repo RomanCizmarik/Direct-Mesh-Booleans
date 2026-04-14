@@ -68,6 +68,8 @@ namespace DMB
                 ingredient.triangles.push_back((uint)vh.idx());
             }
         }
+
+        return ingredient;
     }
 
     inline void addMesh(TriangleSoup& soup, const InputTriangleMesh& ingredient)
