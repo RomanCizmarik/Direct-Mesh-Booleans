@@ -44,6 +44,32 @@ namespace DMB
     //    }
     //}
 
+    template <typename MeshType>
+    inline InputTriangleMesh OpenMesh2TriangleSoupIngredient(const MeshType& mesh, int label)
+    {
+        InputTriangleMesh ingredient;
+
+        ingredient.label = label;
+        ingredient.coordinates.reserve(mesh.vertices() * 3);
+        ingredient.triangles.reserve(mesh.faces() * 3);
+
+        for (auto vh : mesh.vertices())
+        {
+            auto p = mesh.point(vh);
+            ingredient.coordinates.push_back((double)p[0]);
+            ingredient.coordinates.push_back((double)p[1]);
+            ingredient.coordinates.push_back((double)p[2]);
+        }
+
+        for (auto fh : mesh.faces())
+        {
+            for (auto vh : fh.vertices_ccw())
+            {
+                ingredient.triangles.push_back((uint)vh.idx());
+            }
+        }
+    }
+
     inline void addMesh(TriangleSoup& soup, const InputTriangleMesh& ingredient)
     {
         uint vertex_start = uint(std::size(soup.coordinates) / 3);
