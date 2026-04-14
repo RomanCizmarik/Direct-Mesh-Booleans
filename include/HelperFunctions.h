@@ -50,8 +50,8 @@ namespace DMB
         InputTriangleMesh ingredient;
 
         ingredient.label = label;
-        ingredient.coordinates.reserve(mesh.vertices() * 3);
-        ingredient.triangles.reserve(mesh.faces() * 3);
+        ingredient.coordinates.reserve(mesh.vertices().size() * 3);
+        ingredient.triangles.reserve(mesh.faces().size() * 3);
 
         for (auto vh : mesh.vertices())
         {
