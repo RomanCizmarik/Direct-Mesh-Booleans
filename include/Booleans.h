@@ -41,14 +41,14 @@ namespace DMB
     //! \param   predicate   Predicate in form of "int predicate(const std::array<typename MeshType::Point, 3> &triangle, int label)"
     //!                      which for an output triangle and a its label determines if it should be discarded (0), 
     //!                      part of the output mesh (>0) or part of the output mesh but flipped (<0).
-    //! \param   progress    Progress callback functor, if this functor returns false, the computation will be interrupted.
+    //! \param   copyFunctor Optional functor to copy properties from the result MatrixMesh, or MeshArrangement, to the output mesh (accessed via result.getMeshNonConst()).
     //! \param   timings     Optional MeshBooleansTimings for measuring time of the operations.
     //! \return              SUCCESS - everything ok, FAILED - operation failed, INTERRUPTED - operation was interrupted.
     ////////////////////////////////////////////////////////////////////////////////////////////////////
-    template <typename MeshType, typename F>
+    template <typename MeshType, typename PredicateType, typename CopyFunctorType>
     bool meshBoolean(MeshType& output,
         const TriangleSoup& soup,
-        const F& predicate, MeshBooleansTimings* timings = nullptr)
+        const PredicateType& predicate, const CopyFunctorType& copyFunctor = [](MatrixMesh<MeshType>& result, const MeshArrangement<MeshType>& ma) {}, MeshBooleansTimings* timings = nullptr)
     {
         std::chrono::steady_clock::time_point point;
         using tTriangle = std::array<typename MeshType::Point, 3>;
@@ -97,7 +97,7 @@ namespace DMB
 
         point = std::chrono::steady_clock::now();
 
-        auto copyFunctor = [&ma](uint tId, uint newTId, MatrixMesh<MeshType>& matrixMesh)
+        auto copyMaProps = [&ma](uint tId, uint newTId, MatrixMesh<MeshType>& matrixMesh)
             {
                 matrixMesh.m_intersectionFaceProp[newTId] = ma.m_intersectionEdgeFaceProp[tId];
                 matrixMesh.m_coplanarFaceProp[newTId] = ma.m_coplanarFace[tId];
@@ -166,8 +166,8 @@ namespace DMB
             return false;
         }
 
-        left.copyMAProperties(copyFunctor);
-        right.copyMAProperties(copyFunctor);
+        left.copyMAProperties(copyMaProps);
+        right.copyMAProperties(copyMaProps);
 
         if (!left.disconnectComponents(ma))
         {
@@ -207,6 +207,7 @@ namespace DMB
             return false;
         }
 
+        copyFunctor(result, ma);
 
         output = result.getClearMesh();
 
@@ -280,11 +281,13 @@ namespace DMB
             ++label;
         }
 
-        return meshBoolean(output, soup, predicateUnion, timings);
+        auto emptyCopyFunctor = [](MatrixMesh<MeshType>& result, const MeshArrangement<MeshType>& ma) {};
+        return meshBoolean(output, soup, predicateUnion, emptyCopyFunctor, timings);
     }
     template <typename MeshType>
     bool meshUnion(MeshType& output,
         const InputTriangleMesh& lhs, const InputTriangleMesh& rhs,
+        std::function<void(MatrixMesh<MeshType>&, const MeshArrangement<MeshType>&)> copyFunctor = [](MatrixMesh<MeshType>& result, const MeshArrangement<MeshType>& ma) {},
         MeshBooleansTimings* timings = nullptr)
     {
         TriangleSoup soup{};
@@ -293,7 +296,7 @@ namespace DMB
             addMesh(soup, ingredient);
         }
 
-        return meshBoolean(output, soup, predicateUnion, timings);
+        return meshBoolean(output, soup, predicateUnion, copyFunctor, timings);
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -323,11 +326,13 @@ namespace DMB
             ++label;
         }
 
-        return meshBoolean(output, soup, predicateIntersection, timings);
+        auto emptyCopyFunctor = [](MatrixMesh<MeshType>& result, const MeshArrangement<MeshType>& ma) {};
+        return meshBoolean(output, soup, predicateIntersection, emptyCopyFunctor, timings);
     }
     template <typename MeshType>
     bool meshIntersection(MeshType& output,
         const InputTriangleMesh& lhs, const InputTriangleMesh& rhs,
+        std::function<void(MatrixMesh<MeshType>&, const MeshArrangement<MeshType>&)> copyFunctor = [](MatrixMesh<MeshType>& result, const MeshArrangement<MeshType>& ma) {},
         MeshBooleansTimings* timings = nullptr)
     {
         TriangleSoup soup{};
@@ -336,7 +341,7 @@ namespace DMB
             addMesh(soup, ingredient);
         }
 
-        return meshBoolean(output, soup, predicateIntersection, timings);
+        return meshBoolean(output, soup, predicateIntersection, copyFunctor, timings);
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -365,12 +370,14 @@ namespace DMB
             ++label;
         }
 
-        return meshBoolean(output, soup, predicateDifference, timings);
+        auto emptyCopyFunctor = [](MatrixMesh<MeshType>& result, const MeshArrangement<MeshType>& ma) {};
+        return meshBoolean(output, soup, predicateDifference, emptyCopyFunctor, timings);
     }
 
     template <typename MeshType>
     bool meshSubtraction(MeshType& output,
         const InputTriangleMesh& lhs, const InputTriangleMesh& rhs,
+        std::function<void(MatrixMesh<MeshType>&, const MeshArrangement<MeshType>&)> copyFunctor = [](MatrixMesh<MeshType>& result, const MeshArrangement<MeshType>& ma) {},
         MeshBooleansTimings* timings = nullptr)
     {
         TriangleSoup soup{};
@@ -379,6 +386,6 @@ namespace DMB
             addMesh(soup, ingredient);
         }
 
-        return meshBoolean(output, soup, predicateDifference, timings);
+        return meshBoolean(output, soup, predicateDifference, copyFunctor, timings);
     }
 }//namespace
