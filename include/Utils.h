@@ -255,4 +255,90 @@ namespace DMB
 
         return w;
     }
+
+
+    template<typename MeshType>
+    void copyMeshPart(const MeshType& srcMesh, MeshType& destMesh, std::vector<typename MeshType::FaceHandle> facesToCopy, bool doGarbageCollection = false)
+    {
+        destMesh = srcMesh;
+
+        auto leaveThisPrimitive = OpenMesh::makeTemporaryProperty<typename MeshType::FaceHandle, bool>(destMesh, "leaveThisPrimitive");
+
+        //handles and indices should be the same in copied mesh
+        for (auto fh : facesToCopy)
+        {
+            leaveThisPrimitive[fh] = true;
+        }
+
+        for (auto fh : destMesh.faces())
+        {
+            if (!leaveThisPrimitive[fh])
+            {
+                destMesh.delete_face(fh, true);
+            }
+        }
+
+        if (doGarbageCollection)
+        {
+            destMesh.garbage_collection();
+        }
+    }
+
+    
+    template<typename MeshType>
+    void copyMeshPart(const MeshType& srcMesh, MeshType& destMesh, std::vector<typename MeshType::EdgeHandle> edgesToCopy, bool doGarbageCollection = false)
+    {
+        destMesh = srcMesh;
+
+        auto leaveThisPrimitive = OpenMesh::makeTemporaryProperty<typename MeshType::EdgeHandle, bool>(destMesh, "leaveThisPrimitive");
+
+        //handles and indices should be the same in copied mesh
+        for (auto eh : edgesToCopy)
+        {
+            leaveThisPrimitive[eh] = true;
+        }
+
+        for (auto eh : destMesh.edges())
+        {
+            if (!leaveThisPrimitive[eh])
+            {
+                destMesh.delete_edge(eh, true);
+            }
+        }
+
+        if (doGarbageCollection)
+        {
+            destMesh.garbage_collection();
+        }
+    }
+
+    
+    template<typename MeshType>
+    void copyMeshPart(const MeshType& srcMesh, MeshType& destMesh, std::vector<typename MeshType::VertexHandle> verticesToCopy, bool doGarbageCollection = false)
+    {
+        destMesh = srcMesh;
+
+        auto leaveThisPrimitive = OpenMesh::makeTemporaryProperty<typename MeshType::VertexHandle, bool>(destMesh, "leaveThisPrimitive");
+
+        //handles and indices should be the same in copied mesh
+        for (auto vh : verticesToCopy)
+        {
+            leaveThisPrimitive[vh] = true;
+        }
+
+        for (auto vh : destMesh.vertices())
+        {
+            if (!leaveThisPrimitive[vh])
+            {
+                destMesh.delete_vertex(vh, true);
+            }
+        }
+
+        if (doGarbageCollection)
+        {
+            destMesh.garbage_collection();
+        }
+    }
+
+
 } //namespace

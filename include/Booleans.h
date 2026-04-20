@@ -84,6 +84,10 @@ namespace DMB
         ma.m_multiplier = ma.m_coordinatesImplicit.back()->toExplicit3D().X();
         computeApproximateCoordinates(ma.m_coordinatesImplicit, ma.m_coordinates);
 
+        //pop last five jolly points from MA - TODO: check if they are dealocated
+        for(int i = 0; i < 5; ++i)
+            ma.m_coordinatesImplicit.pop_back();
+
         //leave only the sign from m_multiplier (1 or -1) and add it to the orientation result,
         ma.m_multiplier = ma.m_multiplier / std::abs(ma.m_multiplier);
 
@@ -178,6 +182,8 @@ namespace DMB
         {
             return false;
         }
+
+        ma.updateMatrices();
 
         left.classifyIsolatedComponents(right);
         right.classifyIsolatedComponents(left);

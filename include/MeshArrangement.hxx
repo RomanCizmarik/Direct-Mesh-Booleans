@@ -14,7 +14,7 @@ DMB::MeshArrangement<MeshType>::MeshArrangement() :
 template<typename MeshType>
 inline void DMB::MeshArrangement<MeshType>::updateMatrices()
 {
-    m_nFaces = m_triangles.size();
+    m_nFaces = m_triangles.size() / 3;
     m_nVertices = m_coordinatesImplicit.size();
 
     //TODO: make some property management system
@@ -684,6 +684,43 @@ inline void DMB::MeshArrangement<MeshType>::buildEdgeVertices()
 }
 
 template<typename MeshType>
+inline uint DMB::MeshArrangement<MeshType>::addVertex(double x, double y, double z)
+{
+    uint newVhId = (uint)m_coordinatesImplicit.size();
+    m_coordinatesImplicit.push_back(new explicitPoint3D(x, y, z)); //TODO: chech allocation, is it deleted somewhere?
+    m_coordinates.push_back(x);
+    m_coordinates.push_back(y);
+    m_coordinates.push_back(z);
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline uint DMB::MeshArrangement<MeshType>::addNewFace(uint vh0, uint vh1, uint vh2, std::bitset<NBIT> origin)
+{
+    uint newVhId = (uint)m_triangles.size() / 3;
+
+    m_triangles.push_back(vh0);
+    m_triangles.push_back(vh1);
+    m_triangles.push_back(vh2);
+
+    m_labels.push_back(origin);
+
+    //TODO: FILL IN REMAINING PROPERTIES!
+    m_coplanarFace.push_back(false);
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline void DMB::MeshArrangement<MeshType>::updateFace(uint fh, uint vh0, uint vh1, uint vh2)
+{
+    m_triangles[fh * 3 + 0] = vh0;
+    m_triangles[fh * 3 + 1] = vh1;
+    m_triangles[fh * 3 + 2] = vh2;
+}
+
+template<typename MeshType>
 inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
 {
     using tPoint = typename MeshType::Point;
@@ -762,10 +799,10 @@ inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
     //debugMesh.update_normals();
 
     OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-    //opt += OpenMesh::IO::Options::FaceColor;
+    opt += OpenMesh::IO::Options::FaceColor;
 
     debugMesh.update_normals();
-   // DMB::saveMesh(debugMesh, "C:/skola/PhD/Samples/booleans/debugMA.obj", opt);
+    OpenMesh::IO::write_mesh(debugMesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/debugMA.obj", opt);
 }
 
 template<typename MeshType>

@@ -34,7 +34,7 @@ inline DMB::MatrixMesh<MeshType>::MatrixMesh(int label, const MeshArrangement<Me
 template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::updateMatrices()
 {
-    m_nFaces = m_triangles.size();
+    m_nFaces = m_triangles.size() / 3;
     m_nVertices = m_coordinatesImplicit.size();
 
     buildVertexEdgeMatrix();
@@ -511,7 +511,7 @@ inline void DMB::MatrixMesh<MeshType>::addManifoldFaces()
 
     }
 
-    //DMB::saveMesh(m_mesh, "C:/T3D/Samples/Booleans/meshWithoutNonManifolds.obj");
+    //OpenMesh::IO::write_mesh(m_mesh, "C:/T3D/Samples/Booleans/meshWithoutNonManifolds.obj");
 
 }
 
@@ -881,7 +881,7 @@ inline void DMB::MatrixMesh<MeshType>::addNonManifoldEdges(bool considerOrigin /
 
     //m_mesh.delete_isolated_vertices();
     //m_mesh.garbage_collection();
-    //DMB::saveMesh(m_mesh, "C:/skola/PhD/Samples/booleans/meshHalfWay"+ std::to_string(m_intLabel) +".obj");
+    //OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/Samples/booleans/meshHalfWay"+ std::to_string(m_intLabel) +".obj");
 }
 
 template<typename MeshType>
@@ -1655,14 +1655,15 @@ template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 {
 
-    transferArrangementPropertiesToMesh();
-    detectBoundaries();
-    handleCoplanarFaces();
+    //transferArrangementPropertiesToMesh();
+    //detectBoundaries();
+    //handleCoplanarFaces();
 
     //std::string path = "C:/T3D/Samples/Booleans/";
-    std::string path = "C:/skola/PhD/Samples/booleans/components/";
+    //std::string path = "C:/skola/PhD/Samples/booleans/components/";
+    std::string path = "C:/skola/PhD/VUT/booleans_paper/extension/debug/";
 
-#if 0
+#if 1
 
     MeshType debugMesh;
 
@@ -1693,7 +1694,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
     OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
     opt += OpenMesh::IO::Options::FaceColor;
-    DMB::saveMesh(debugMesh, path + "debugMAMesh"+std::to_string(m_intLabel)+".stl");
+    OpenMesh::IO::write_mesh(debugMesh, path + "debugMAMesh"+std::to_string(m_intLabel)+".stl");
 #endif
 
 
@@ -1714,7 +1715,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
         opt += OpenMesh::IO::Options::FaceColor;
-        //DMB::saveMesh(m_mesh, path + "intersecionFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
+        OpenMesh::IO::write_mesh(m_mesh, path + "intersecionFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
     }
 
     {
@@ -1732,7 +1733,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
         opt += OpenMesh::IO::Options::FaceColor;
-        //DMB::saveMesh(m_mesh, path + "coplanarFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
+        //OpenMesh::IO::write_mesh(m_mesh, path + "coplanarFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
     }
 
     {
@@ -1753,7 +1754,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
         opt += OpenMesh::IO::Options::FaceColor;
-       // DMB::saveMesh(m_mesh, path + "IOFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
+        OpenMesh::IO::write_mesh(m_mesh, path + "IOFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
     }
 
     {
@@ -1812,10 +1813,10 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
         for (const auto& component : components)
         {
             MeshType meshPart;
-            //DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component);
+            DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component, true);
 
             OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-            //DMB::saveMesh(meshPart, "C:/skola/PhD/Samples/booleans/components/cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(cc) + ".obj", opt);
+            OpenMesh::IO::write_mesh(meshPart, path + std::to_string(m_intLabel) + "_" + std::to_string(cc) + ".obj", opt);
             ++cc;
         }
     }
@@ -1900,8 +1901,8 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
         insideMesh.update_normals();
         outsideMesh.update_normals();
 
-        DMB::saveMesh(insideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesInside.stl");
-        DMB::saveMesh(outsideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesOutside.stl");
+        OpenMesh::IO::write_mesh(insideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesInside.stl");
+        OpenMesh::IO::write_mesh(outsideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesOutside.stl");
     }
 
     //inside outside components
@@ -1927,13 +1928,13 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         insideMesh.update_normals();
         outsideMesh.update_normals();
-        DMB::saveMesh(insideMesh, path + "insideMesh" + std::to_string(m_intLabel) + ".stl");
-        DMB::saveMesh(outsideMesh, path + "outsideMesh" + std::to_string(m_intLabel) + ".stl");
+        OpenMesh::IO::write_mesh(insideMesh, path + "insideMesh" + std::to_string(m_intLabel) + ".stl");
+        OpenMesh::IO::write_mesh(outsideMesh, path + "outsideMesh" + std::to_string(m_intLabel) + ".stl");
     }
 
     //whole mesh
     m_mesh.update_normals();
-    DMB::saveMesh(m_mesh, path + "meshOperand" + std::to_string(m_intLabel) + ".obj");
+    OpenMesh::IO::write_mesh(m_mesh, path + "meshOperand" + std::to_string(m_intLabel) + ".obj");
 #endif
 }
 
@@ -2133,6 +2134,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
     OpenMesh::FProp< bool > intersectionFace(m_mesh, m_pIntersectionFace);
 
     OpenMesh::FProp<uint> pFhToMaFh(m_mesh, m_pFhToMaFh);
+    OpenMesh::VProp<uint> pVhToMaVId(m_mesh, m_pVhToMaVId);
+
     OpenMesh::FProp<bool> coplanarFace(m_mesh, m_pCoplanarFace);
 
     OpenMesh::VProp<bool> intersectionVertex(false, m_mesh);
@@ -2216,23 +2219,25 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                 OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
                 opt += OpenMesh::IO::Options::VertexColor;
-                OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) + ".ply", opt);
+                OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/disconnected_cmp_" + std::to_string(m_intLabel) + ".ply", opt);
             }
 
+
+            auto lastFaceId = m_mesh.faces_end()->idx();
             std::vector<OpenMesh::SmartVertexHandle> newVertices;
             for (auto eh : edgesToSplit)
             {
                 //TODO: gather existing faces before -> get newly created faces after -> add the new vertex to ma (carefull with newly allocated point, probably use arena allocator?) -> add new faces to ma -> update all mappings and properties, copy from ma/to ma
                 auto sEh = OpenMesh::make_smart(eh, m_mesh);
-                auto newVh = m_mesh.split(eh, (m_mesh.point(sEh.v0()) + m_mesh.point(sEh.v1())) * 0.5);
+                auto newVh = m_mesh.split(sEh, (m_mesh.point(sEh.v0()) + m_mesh.point(sEh.v1())) * 0.5);
                 
                 pNewVh[newVh] = true;
                 newVertices.push_back(newVh);
 
                 //just to be double sure
-                for(auto eh : newVh.edges())
+                for(auto newEh : newVh.edges())
                 {
-                    pIntersectionEdge[eh] = false;
+                    pIntersectionEdge[newEh] = false;
 
                 }
             }
@@ -2252,6 +2257,73 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             }
 
 
+
+            for (auto newVh : newVertices)
+            {
+                const auto& p = m_mesh.point(newVh);
+                uint newMAVhId = ma.addVertex(p[0], p[1], p[2]);
+                uint newLocalVhId = addVertex(p[0], p[1], p[2]);
+                pVhToMaVId[newVh] = newLocalVhId;
+                m_operandToMaVertices.push_back(newMAVhId);
+            }
+
+            std::bitset<NBIT> thisMeshLabel = 0;
+            thisMeshLabel[m_intLabel] = 1;
+
+            std::unordered_set<tFaceHandle> facesToUpdate;
+            for (auto newVh : newVertices)
+            {
+                for (auto fh : newVh.faces())
+                    facesToUpdate.insert(fh);
+            }
+
+            for (auto fh : facesToUpdate)
+            {
+                //to be double sure - so that the component classification does not take IO label from this face
+                intersectionFace[fh] = false;
+
+                auto sFh = OpenMesh::make_smart(fh, m_mesh);
+                std::vector<OpenMesh::SmartVertexHandle> faceVertices = sFh.vertices().to_vector();
+
+                //new face
+                if (sFh.idx() >= lastFaceId)
+                {
+
+                    uint newLocalTId = addNewFace(pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                    uint newMAFhId = ma.addNewFace(m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]], thisMeshLabel);
+                    pFhToMaFh[fh] = newLocalTId;
+
+                    //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
+                    m_tIdToOriginalTId.push_back(newMAFhId);
+                }
+                //update face
+                else
+                {
+                    //std::cout << faceVertices[0] << std::endl;
+                    //std::cout << faceVertices[1] << std::endl;
+                    //std::cout << faceVertices[2] << std::endl;
+
+                    //std::cout << std::endl;
+                    //std::cout << pVhToMaVId[faceVertices[0]] << std::endl;
+                    //std::cout << pVhToMaVId[faceVertices[1]] << std::endl;
+                    //std::cout << pVhToMaVId[faceVertices[2]] << std::endl;
+
+                    //std::cout << std::endl;
+                    //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[0]]] << std::endl;
+                    //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[1]]] << std::endl;
+                    //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[2]]] << std::endl;
+
+                    //std::cout << std::endl;
+                    //std::cout << pFhToMaFh[fh] << std::endl;
+                    //std::cout << m_tIdToOriginalTId[pFhToMaFh[fh]] << std::endl;
+                    //std::cout << "------------------------------" << std::endl;
+
+
+                    updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                    ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
+                }
+            }
+            
 
 
             //TODO: MAKE LAMBDA OUT OF THIS!!!
@@ -2433,7 +2505,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component);
 
             OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-            DMB::saveMesh(meshPart, "C:/skola/PhD/Samples/booleans/components/cut_cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(cc) + ".obj", opt);
+            OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug//cut_cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(cc) + ".obj", opt);
             ++cc;
         }
     }
@@ -2453,6 +2525,18 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
     for (uint  componentId = 0; componentId < components.size(); ++componentId)
     {
         const auto& component = components[componentId];
+
+#if 0
+        {
+
+            MeshType meshPart;
+            DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component, true);
+
+            OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cut_cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(componentId) + ".obj", opt);
+
+        }
+#endif
 
         //find seed label
         std::bitset<NBIT> seedLabel;
@@ -3087,6 +3171,37 @@ inline int DMB::MatrixMesh<MeshType>::calcVolumeSignExact(const std::vector<Open
     return calcSignedVolumeExact(component).sgn();
 }
 
+template<typename MeshType>
+inline uint DMB::MatrixMesh<MeshType>::addVertex(double x, double y, double z)
+{
+    uint newVhId = (uint)m_coordinatesImplicit.size();
+    m_coordinatesImplicit.push_back(new explicitPoint3D(x, y, z)); //TODO: chech allocation, is it deleted somewhere?
+    m_coordinates.push_back(x);
+    m_coordinates.push_back(y);
+    m_coordinates.push_back(z);
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline uint DMB::MatrixMesh<MeshType>::addNewFace(uint vh0, uint vh1, uint vh2)
+{
+    uint newVhId = (uint)m_triangles.size() / 3;
+
+    m_triangles.push_back(vh0);
+    m_triangles.push_back(vh1);
+    m_triangles.push_back(vh2);
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline void DMB::MatrixMesh<MeshType>::updateFace(uint fh, uint vh0, uint vh1, uint vh2)
+{
+    m_triangles[fh * 3 + 0] = vh0;
+    m_triangles[fh * 3 + 1] = vh1;
+    m_triangles[fh * 3 + 2] = vh2;
+}
 
 template<typename MeshType>
 template<typename F>
@@ -3183,7 +3298,6 @@ inline void DMB::MatrixMesh<MeshType>::debug_showMesh(const F& func)
     }
 
     debugMesh.update_normals();
-    T3D_VDT_STORE_NAMED_MESH_AND_WAIT("", debugMesh);
 }
 
 

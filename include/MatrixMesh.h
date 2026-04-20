@@ -137,6 +137,7 @@ namespace DMB
             maToOperandVertices.resize(ma.m_coordinatesImplicit.size(), -1);
 
             m_tIdToOriginalTId.reserve(ma.m_triangles.size());
+            m_operandToMaVertices.reserve(ma.m_coordinatesImplicit.size());
 
             uint newVhId = 0;
 
@@ -180,6 +181,7 @@ namespace DMB
                     {
                         maToOperandVertices[maVh] = newVhId;
                         ++newVhId;
+                        m_operandToMaVertices.push_back(maVh);
 
                         auto* gp = ma.m_coordinatesImplicit[maVh];
 
@@ -233,6 +235,9 @@ namespace DMB
         bigfloat calcSignedVolumeExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
         int calcVolumeSignExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
 
+        uint addVertex(double x, double y, double z);
+        uint addNewFace(uint vh0, uint vh1, uint vh2);
+        void updateFace(uint fh, uint vh0, uint vh1, uint vh2);
 
         template<typename F>
         void debug_showMesh(const F& func);
@@ -273,6 +278,8 @@ namespace DMB
         std::vector<bool> m_faceFlipped;
         std::vector<bool> m_selfIntersectingFace;
 
+        std::vector<uint> m_operandToMaVertices;
+        //TODO: rename this - it means this operand face idx to MA face idx
         std::vector<uint> m_tIdToOriginalTId;
 
         //TODO delete debug
