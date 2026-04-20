@@ -1352,6 +1352,7 @@ inline uint DMB::MatrixMesh<MeshType>::duplicateVertex(uint vId)
     //TODO: make some property management!
     m_nonManifoldEdgeVertexProp.push_back(false);
     m_nonManifoldVertexProp.push_back(false);
+    m_operandToMaVertices[newVId] = m_operandToMaVertices[vId];
 
     ++m_nVertices;
 
@@ -2220,6 +2221,10 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             {
                 //TODO: gather existing faces before -> get newly created faces after -> add the new vertex to ma (carefull with newly allocated point, probably use arena allocator?) -> add new faces to ma -> update all mappings and properties, copy from ma/to ma
                 auto sEh = OpenMesh::make_smart(eh, m_mesh);
+                
+                auto originalFh0 = sEh.h0().face();
+                auto originalFh1 = sEh.h1().face();
+
                 const auto wn0 = pFWN[sEh.v0()];
                 const auto wn1 = pFWN[sEh.v1()];
                 const auto p0 = m_mesh.point(sEh.v0());
@@ -2304,21 +2309,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 auto newVh = m_mesh.split(sEh, splitPos);
                 
                 pNewVh[newVh] = true;
-                newVertices.push_back(newVh);
 
-                //just to be double sure
-                for(auto newEh : newVh.edges())
-                {
-                    pIntersectionEdge[newEh] = false;
+                uint newMAVhId = ma.addVertex(splitPos[0], splitPos[1], splitPos[2]);
+                uint newLocalVhId = addVertex(splitPos[0], splitPos[1], splitPos[2], newMAVhId);
+                pVhToMaVId[newVh] = newLocalVhId;
 
-                }
-            }
-
-            //OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/after_split" + std::to_string(m_intLabel) + ".ply");
-
-            //mark new virtual intersection edges
-            for (auto newVh : newVertices)
-            {
                 for (auto he : newVh.outgoing_halfedges())
                 {
                     if (pNewVh[he.to()] || intersectionVertex[he.to()])
@@ -2326,77 +2321,53 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         pIntersectionEdge[he.edge()] = true;
                     }
                 }
-            }
 
-
-
-            for (auto newVh : newVertices)
-            {
-                const auto& p = m_mesh.point(newVh);
-                uint newMAVhId = ma.addVertex(p[0], p[1], p[2]);
-                uint newLocalVhId = addVertex(p[0], p[1], p[2]);
-                pVhToMaVId[newVh] = newLocalVhId;
-                m_operandToMaVertices.push_back(newMAVhId);
-            }
-
-            std::bitset<NBIT> thisMeshLabel = 0;
-            thisMeshLabel[m_intLabel] = 1;
-
-            std::unordered_set<tFaceHandle> facesToUpdate;
-            for (auto newVh : newVertices)
-            {
                 for (auto fh : newVh.faces())
-                    facesToUpdate.insert(fh);
-            }
-
-            for (auto fh : facesToUpdate)
-            {
-                //to be double sure - so that the component classification does not take IO label from this face
-                intersectionFace[fh] = false;
-
-                auto sFh = OpenMesh::make_smart(fh, m_mesh);
-                std::vector<OpenMesh::SmartVertexHandle> faceVertices = sFh.vertices().to_vector();
-
-                //new face
-                if (sFh.idx() >= lastFaceId)
                 {
+                    std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
 
-                    uint newLocalTId = addNewFace(pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
-                    uint newMAFhId = ma.addNewFace(m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]], thisMeshLabel);
-                    pFhToMaFh[fh] = newLocalTId;
+                    //update
+                    if (fh == originalFh0 || fh == originalFh1)
+                    {
+                        //std::cout << faceVertices[0] << std::endl;
+                        //std::cout << faceVertices[1] << std::endl;
+                        //std::cout << faceVertices[2] << std::endl;
 
-                    //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
-                    m_tIdToOriginalTId.push_back(newMAFhId);
+                        //std::cout << std::endl;
+                        //std::cout << pVhToMaVId[faceVertices[0]] << std::endl;
+                        //std::cout << pVhToMaVId[faceVertices[1]] << std::endl;
+                        //std::cout << pVhToMaVId[faceVertices[2]] << std::endl;
+
+                        //std::cout << std::endl;
+                        //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[0]]] << std::endl;
+                        //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[1]]] << std::endl;
+                        //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[2]]] << std::endl;
+
+                        //std::cout << std::endl;
+                        //std::cout << pFhToMaFh[fh] << std::endl;
+                        //std::cout << m_tIdToOriginalTId[pFhToMaFh[fh]] << std::endl;
+                        //std::cout << "------------------------------" << std::endl;
+
+                        updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                        ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
+                    }
+                    //add new
+                    else
+                    {
+                        std::bitset<NBIT> thisMeshLabel = 0;
+                        thisMeshLabel[m_intLabel] = 1;
+
+                        uint newLocalTId = addNewFace(pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                        uint newMAFhId = ma.addNewFace(m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]], thisMeshLabel);
+                        pFhToMaFh[fh] = newLocalTId;
+
+                        //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
+                        m_tIdToOriginalTId.push_back(newMAFhId);
+
+                    }
                 }
-                //update face
-                else
-                {
-                    //std::cout << faceVertices[0] << std::endl;
-                    //std::cout << faceVertices[1] << std::endl;
-                    //std::cout << faceVertices[2] << std::endl;
 
-                    //std::cout << std::endl;
-                    //std::cout << pVhToMaVId[faceVertices[0]] << std::endl;
-                    //std::cout << pVhToMaVId[faceVertices[1]] << std::endl;
-                    //std::cout << pVhToMaVId[faceVertices[2]] << std::endl;
-
-                    //std::cout << std::endl;
-                    //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[0]]] << std::endl;
-                    //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[1]]] << std::endl;
-                    //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[2]]] << std::endl;
-
-                    //std::cout << std::endl;
-                    //std::cout << pFhToMaFh[fh] << std::endl;
-                    //std::cout << m_tIdToOriginalTId[pFhToMaFh[fh]] << std::endl;
-                    //std::cout << "------------------------------" << std::endl;
-
-
-                    updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
-                    ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
-                }
             }
-            
-
 
             //TODO: MAKE LAMBDA OUT OF THIS!!!
 
@@ -3244,13 +3215,15 @@ inline int DMB::MatrixMesh<MeshType>::calcVolumeSignExact(const std::vector<Open
 }
 
 template<typename MeshType>
-inline uint DMB::MatrixMesh<MeshType>::addVertex(double x, double y, double z)
+inline uint DMB::MatrixMesh<MeshType>::addVertex(double x, double y, double z, uint MAVhId)
 {
     uint newVhId = (uint)m_coordinatesImplicit.size();
     m_coordinatesImplicit.push_back(new explicitPoint3D(x, y, z)); //TODO: chech allocation, is it deleted somewhere?
     m_coordinates.push_back(x);
     m_coordinates.push_back(y);
     m_coordinates.push_back(z);
+
+    m_operandToMaVertices[newVhId] = MAVhId;
 
     return newVhId;
 }
