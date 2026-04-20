@@ -2225,6 +2225,9 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 auto originalFh0 = sEh.h0().face();
                 auto originalFh1 = sEh.h1().face();
 
+                const auto vh0 = sEh.v0();
+                const auto vh1 = sEh.v1();
+
                 const auto wn0 = pFWN[sEh.v0()];
                 const auto wn1 = pFWN[sEh.v1()];
                 const auto p0 = m_mesh.point(sEh.v0());
@@ -2314,8 +2317,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 uint newLocalVhId = addVertex(splitPos[0], splitPos[1], splitPos[2], newMAVhId);
                 pVhToMaVId[newVh] = newLocalVhId;
 
+                
                 for (auto he : newVh.outgoing_halfedges())
                 {
+                    pIntersectionEdge[he.edge()] = false;
+
                     if (pNewVh[he.to()] || intersectionVertex[he.to()])
                     {
                         pIntersectionEdge[he.edge()] = true;
@@ -2324,6 +2330,28 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                 for (auto fh : newVh.faces())
                 {
+                    //IO classification
+                    intersectionFace[fh] = true;
+
+                    bool isInside = false;
+                    for (auto fvh : fh.vertices())
+                    {
+                        if (fvh == vh0 || fvh == vh1)
+                        {
+                            isInside = pFWN[fvh] >= 0.5;
+                        }
+                    }
+
+                    std::bitset<NBIT> thisFaceLabel = 0;
+
+                    if (isInside)
+                    {
+                        thisFaceLabel[other.m_intLabel] = 1;
+                    }
+
+                    labeling[fh] = thisFaceLabel;
+
+
                     std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
 
                     //update
@@ -2666,6 +2694,10 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 double v = 0;
                 for (auto id : componentsId)
                 {
+                    if (id < 0)
+                    {
+                        continue;
+                    }
                     v += ma.m_componentsVolume[id];
                 }
 

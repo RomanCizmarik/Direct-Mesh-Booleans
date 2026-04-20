@@ -708,6 +708,7 @@ inline uint DMB::MeshArrangement<MeshType>::addNewFace(uint vh0, uint vh1, uint 
 
     //TODO: FILL IN REMAINING PROPERTIES!
     m_coplanarFace.push_back(false);
+    m_faceClassifiedByComponent.push_back(-1);
 
     return newVhId;
 }

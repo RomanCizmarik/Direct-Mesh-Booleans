@@ -179,8 +179,8 @@ namespace DMB
                     if (maToOperandVertices[maVh] < 0)
                     {
                         maToOperandVertices[maVh] = newVhId;
-                        ++newVhId;
                         m_operandToMaVertices[newVhId] = maVh;
+                        ++newVhId;
 
                         auto* gp = ma.m_coordinatesImplicit[maVh];
 
