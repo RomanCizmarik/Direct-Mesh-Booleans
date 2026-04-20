@@ -2213,15 +2213,6 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             }
 
 
-            {
-                //MeshType meshPart;
-                //DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component);
-
-                OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-                opt += OpenMesh::IO::Options::VertexColor;
-                OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/disconnected_cmp_" + std::to_string(m_intLabel) + ".ply", opt);
-            }
-
 
             auto lastFaceId = m_mesh.faces_end()->idx();
             std::vector<OpenMesh::SmartVertexHandle> newVertices;
@@ -2229,7 +2220,67 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             {
                 //TODO: gather existing faces before -> get newly created faces after -> add the new vertex to ma (carefull with newly allocated point, probably use arena allocator?) -> add new faces to ma -> update all mappings and properties, copy from ma/to ma
                 auto sEh = OpenMesh::make_smart(eh, m_mesh);
-                auto newVh = m_mesh.split(sEh, (m_mesh.point(sEh.v0()) + m_mesh.point(sEh.v1())) * 0.5);
+                const auto wn0 = pFWN[sEh.v0()];
+                const auto wn1 = pFWN[sEh.v1()];
+                const auto p0 = m_mesh.point(sEh.v0());
+                const auto p1 = m_mesh.point(sEh.v1());
+
+                double t = 0.5;
+                double left = 0.0;
+                double right = 1.0;
+                double fLeft = wn0 - 0.5;
+                double fRight = wn1 - 0.5;
+
+                if (std::fabs(fLeft) > 1e-12 && std::fabs(fRight) > 1e-12 && (fLeft * fRight) < 0.0)
+                {
+                    for (int i = 0; i < 24; ++i)
+                    {
+                        const double mid = 0.5 * (left + right);
+                        const auto pMid = p0 + (p1 - p0) * static_cast<tScalar>(mid);
+                        const double fMid = acc->windingNumber(pMid) - 0.5;
+
+                        if (std::fabs(fMid) < 1e-6)
+                        {
+                            t = mid;
+                            break;
+                        }
+
+                        if ((fLeft * fMid) <= 0.0)
+                        {
+                            right = mid;
+                            fRight = fMid;
+                        }
+                        else
+                        {
+                            left = mid;
+                            fLeft = fMid;
+                        }
+
+                        t = 0.5 * (left + right);
+                    }
+                }
+                else
+                {
+                    const double denom = wn1 - wn0;
+                    if (std::fabs(denom) > 1e-12)
+                    {
+                        t = (0.5 - wn0) / denom;
+                    }
+                }
+
+                // Keep the split vertex in the edge interior for robust topology updates.
+                if (t < 1e-6)
+                {
+                    t = 1e-6;
+                }
+                else if (t > 1.0 - 1e-6)
+                {
+                    t = 1.0 - 1e-6;
+                }
+
+                const auto splitPos = p0 + (p1 - p0) * static_cast<tScalar>(t);
+
+                auto newVh = m_mesh.split(sEh, splitPos);
                 
                 pNewVh[newVh] = true;
                 newVertices.push_back(newVh);
@@ -2242,7 +2293,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
-            OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/after_split" + std::to_string(m_intLabel) + ".ply");
+            //OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/after_split" + std::to_string(m_intLabel) + ".ply");
 
             //mark new virtual intersection edges
             for (auto newVh : newVertices)
