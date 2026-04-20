@@ -2226,45 +2226,62 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 const auto p1 = m_mesh.point(sEh.v1());
 
                 double t = 0.5;
-                double left = 0.0;
-                double right = 1.0;
-                double fLeft = wn0 - 0.5;
-                double fRight = wn1 - 0.5;
+                const double f0 = wn0 - 0.5;
+                const double f1 = wn1 - 0.5;
+                const double denom = wn1 - wn0;
 
-                if (std::fabs(fLeft) > 1e-12 && std::fabs(fRight) > 1e-12 && (fLeft * fRight) < 0.0)
+                // Linear crossing is a good initial estimate and fallback.
+                double tLinear = 0.5;
+                if (std::fabs(denom) > 1e-12)
                 {
-                    for (int i = 0; i < 24; ++i)
-                    {
-                        const double mid = 0.5 * (left + right);
-                        const auto pMid = p0 + (p1 - p0) * static_cast<tScalar>(mid);
-                        const double fMid = acc->windingNumber(pMid) - 0.5;
-
-                        if (std::fabs(fMid) < 1e-6)
-                        {
-                            t = mid;
-                            break;
-                        }
-
-                        if ((fLeft * fMid) <= 0.0)
-                        {
-                            right = mid;
-                            fRight = fMid;
-                        }
-                        else
-                        {
-                            left = mid;
-                            fLeft = fMid;
-                        }
-
-                        t = 0.5 * (left + right);
-                    }
+                    tLinear = (0.5 - wn0) / denom;
                 }
-                else
+                t = tLinear;
+
+                // Refine with a quadratic model along the edge using one extra FWN sample at midpoint.
+                if (std::fabs(f0) > 1e-12 && std::fabs(f1) > 1e-12 && (f0 * f1) < 0.0)
                 {
-                    const double denom = wn1 - wn0;
-                    if (std::fabs(denom) > 1e-12)
+                    const auto pMid = p0 + (p1 - p0) * static_cast<tScalar>(0.5);
+                    const double fMid = acc->windingNumber(pMid) - 0.5;
+
+                    // f(t) = a*t^2 + b*t + c, with samples at t=0, 0.5, 1.
+                    const double c = f0;
+                    const double d1 = f1 - f0;
+                    const double dMid = fMid - f0;
+                    const double a = 2.0 * d1 - 4.0 * dMid;
+                    const double b = d1 - a;
+
+                    if (std::fabs(a) <= 1e-12)
                     {
-                        t = (0.5 - wn0) / denom;
+                        if (std::fabs(b) > 1e-12)
+                        {
+                            t = -c / b;
+                        }
+                    }
+                    else
+                    {
+                        const double disc = b * b - 4.0 * a * c;
+                        if (disc >= 0.0)
+                        {
+                            const double sqrtDisc = std::sqrt(disc);
+                            const double r0 = (-b - sqrtDisc) / (2.0 * a);
+                            const double r1 = (-b + sqrtDisc) / (2.0 * a);
+                            const bool r0Valid = (r0 >= 0.0 && r0 <= 1.0);
+                            const bool r1Valid = (r1 >= 0.0 && r1 <= 1.0);
+
+                            if (r0Valid && r1Valid)
+                            {
+                                t = (std::fabs(r0 - tLinear) < std::fabs(r1 - tLinear)) ? r0 : r1;
+                            }
+                            else if (r0Valid)
+                            {
+                                t = r0;
+                            }
+                            else if (r1Valid)
+                            {
+                                t = r1;
+                            }
+                        }
                     }
                 }
 
