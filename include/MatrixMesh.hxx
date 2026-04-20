@@ -2228,59 +2228,63 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 double t = 0.5;
                 const double f0 = wn0 - 0.5;
                 const double f1 = wn1 - 0.5;
+                // Linear crossing is a good fallback.
                 const double denom = wn1 - wn0;
-
-                // Linear crossing is a good initial estimate and fallback.
-                double tLinear = 0.5;
                 if (std::fabs(denom) > 1e-12)
                 {
-                    tLinear = (0.5 - wn0) / denom;
+                    t = (0.5 - wn0) / denom;
                 }
-                t = tLinear;
 
-                // Refine with a quadratic model along the edge using one extra FWN sample at midpoint.
-                if (std::fabs(f0) > 1e-12 && std::fabs(f1) > 1e-12 && (f0 * f1) < 0.0)
+                // Illinois (modified regula falsi) refinement on the bracket [0, 1].
+                if ((f0 * f1) < 0.0)
                 {
-                    const auto pMid = p0 + (p1 - p0) * static_cast<tScalar>(0.5);
-                    const double fMid = acc->windingNumber(pMid) - 0.5;
+                    double left = 0.0;
+                    double right = 1.0;
+                    double fLeft = f0;
+                    double fRight = f1;
+                    int lastSide = 0;
 
-                    // f(t) = a*t^2 + b*t + c, with samples at t=0, 0.5, 1.
-                    const double c = f0;
-                    const double d1 = f1 - f0;
-                    const double dMid = fMid - f0;
-                    const double a = 2.0 * d1 - 4.0 * dMid;
-                    const double b = d1 - a;
-
-                    if (std::fabs(a) <= 1e-12)
+                    for (int i = 0; i < 8; ++i)
                     {
-                        if (std::fabs(b) > 1e-12)
+                        const double fpDenom = (fRight - fLeft);
+                        if (std::fabs(fpDenom) <= 1e-12)
                         {
-                            t = -c / b;
+                            break;
                         }
-                    }
-                    else
-                    {
-                        const double disc = b * b - 4.0 * a * c;
-                        if (disc >= 0.0)
-                        {
-                            const double sqrtDisc = std::sqrt(disc);
-                            const double r0 = (-b - sqrtDisc) / (2.0 * a);
-                            const double r1 = (-b + sqrtDisc) / (2.0 * a);
-                            const bool r0Valid = (r0 >= 0.0 && r0 <= 1.0);
-                            const bool r1Valid = (r1 >= 0.0 && r1 <= 1.0);
 
-                            if (r0Valid && r1Valid)
+                        const double x = (left * fRight - right * fLeft) / fpDenom;
+                        const auto pX = p0 + (p1 - p0) * static_cast<tScalar>(x);
+                        const double fX = acc->windingNumber(pX) - 0.5;
+                        t = x;
+
+                        if (std::fabs(fX) < 1e-6)
+                        {
+                            break;
+                        }
+
+                        if ((fLeft * fX) < 0.0)
+                        {
+                            right = x;
+                            fRight = fX;
+                            if (lastSide == -1)
                             {
-                                t = (std::fabs(r0 - tLinear) < std::fabs(r1 - tLinear)) ? r0 : r1;
+                                fLeft *= 0.5;
                             }
-                            else if (r0Valid)
+                            lastSide = -1;
+                        }
+                        else if ((fRight * fX) < 0.0)
+                        {
+                            left = x;
+                            fLeft = fX;
+                            if (lastSide == 1)
                             {
-                                t = r0;
+                                fRight *= 0.5;
                             }
-                            else if (r1Valid)
-                            {
-                                t = r1;
-                            }
+                            lastSide = 1;
+                        }
+                        else
+                        {
+                            break;
                         }
                     }
                 }
@@ -2459,7 +2463,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
-
+            //updateMatrices();
 
         };
 
