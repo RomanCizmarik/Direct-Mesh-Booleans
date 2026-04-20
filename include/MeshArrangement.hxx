@@ -317,17 +317,7 @@ inline void DMB::MeshArrangement<MeshType>::classifyFaces()
                 return false;
             };
 
-        auto insideSimplified = [this, &trianglePoints](uint leftTriId, uint rightTriId, genericPoint* p)
-            {
-                std::array<genericPoint*, 3 > leftTri = trianglePoints(leftTriId);
-                std::array<genericPoint*, 3 > rightTri = trianglePoints(rightTriId);
-
-                int orientationL = (genericPoint::orient3D(*leftTri[0], *leftTri[1], *leftTri[2], *p) * (int)m_multiplier);
-                int orientationR = (genericPoint::orient3D(*rightTri[0], *rightTri[1], *rightTri[2], *p) * (int)m_multiplier);
-
-                return (orientationL + orientationR) <= 0;
-            };
-
+        
         auto radialSort = [this, &edgeVertices, &trianglePoints, &remainingVId](uint tId, const std::vector<uint>& trianglesToSort)
             {
                 std::array<genericPoint*, 3 > triPoints = trianglePoints(tId);
@@ -757,36 +747,50 @@ inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
 
         debugMesh.set_color(fh, { 192,192,192 });
 
+        
 
-
-        //if (m_intersectionEdgeFaceProp[tId])
+        //if (m_boPredicates[tId] == 0)
         //{
-        //    auto IOLabel = m_faceIOLabeling[tId];
-        //    auto faceLabel = m_labels[tId];
-
-
-        //    if (IOLabel.count() > 0)
-        //    {
-        //        debugMesh.set_color(fh, { 0,255,0 });
-        //    }
-        //    else
-        //    {
-        //        debugMesh.set_color(fh, { 255,0,0 });
-
-        //    }
-
-
-        ////    //if (faceLabel[0] == 1 && IOLabel[1] == 0 && IOLabel[0] == 0)
-        ////    //{
-        ////    //    debugMesh.set_color(fh, { 0,255,0 });
-        ////    //}
-
-        ////    //if (faceLabel[1] == 1 && IOLabel[0] == 1 && IOLabel[1] == 0)
-        ////    //{
-        ////    //    debugMesh.set_color(fh, { 0,255,0 });
-        ////    //}
-
+        //    debugMesh.set_color(fh, { 255,0,0 });
         //}
+        //if (m_boPredicates[tId] == 1)
+        //{
+        //    debugMesh.set_color(fh, { 0,255,0 });
+        //}
+        //if (m_boPredicates[tId] == -1)
+        //{
+        //    debugMesh.set_color(fh, { 125,125,0 });
+        //}
+        
+ 
+        if (m_intersectionEdgeFaceProp[tId])
+        {
+            auto IOLabel = m_faceIOLabeling[tId];
+            auto faceLabel = m_labels[tId];
+
+
+            if (IOLabel.count() > 0)
+            {
+                debugMesh.set_color(fh, { 255,0,0 });
+            }
+            else
+            {
+                debugMesh.set_color(fh, { 0,255,0 });
+
+            }
+
+
+        //    //if (faceLabel[0] == 1 && IOLabel[1] == 0 && IOLabel[0] == 0)
+        //    //{
+        //    //    debugMesh.set_color(fh, { 0,255,0 });
+        //    //}
+
+        //    //if (faceLabel[1] == 1 && IOLabel[0] == 1 && IOLabel[1] == 0)
+        //    //{
+        //    //    debugMesh.set_color(fh, { 0,255,0 });
+        //    //}
+
+        }
 
         //if (m_coplanarFace[tId])
         //{
@@ -803,7 +807,7 @@ inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
     opt += OpenMesh::IO::Options::FaceColor;
 
     debugMesh.update_normals();
-    OpenMesh::IO::write_mesh(debugMesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/debugMA.obj", opt);
+    OpenMesh::IO::write_mesh(debugMesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/debugMA.ply", opt);
 }
 
 template<typename MeshType>

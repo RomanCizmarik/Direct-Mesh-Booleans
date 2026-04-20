@@ -170,8 +170,12 @@ namespace DMB
             return false;
         }
 
+        //ma.buildDebugMesh();
+
         left.copyMAProperties(copyFunctor);
         right.copyMAProperties(copyFunctor);
+
+        //left.buildDebugMesh();
 
         if (!left.disconnectComponents(ma, right))
         {
@@ -188,9 +192,12 @@ namespace DMB
         left.classifyIsolatedComponents(right);
         right.classifyIsolatedComponents(left);
 
+        //left.buildDebugMesh();
 
         left.classifyMeshArrangement(ma, 0, predicate);
         right.classifyMeshArrangement(ma, 1, predicate);
+
+        //ma.buildDebugMesh();
 
         MatrixMesh<MeshType> result(2, ma,
             [&ma, &predicate](uint tId) -> int

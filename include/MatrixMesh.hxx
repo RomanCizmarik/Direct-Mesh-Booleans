@@ -1656,7 +1656,7 @@ template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 {
 
-    //transferArrangementPropertiesToMesh();
+    transferArrangementPropertiesToMesh();
     //detectBoundaries();
     //handleCoplanarFaces();
 
@@ -1758,6 +1758,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
         OpenMesh::IO::write_mesh(m_mesh, path + "IOFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
     }
 
+#if 0
     {
         auto getConnectedComponents = [](MeshType& mesh)
             {
@@ -1822,6 +1823,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
         }
     }
 
+#endif
 #endif
 
 #if 0
@@ -2155,6 +2157,19 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             std::unordered_set<tVertexHandle> vertices;
             std::unordered_set<tEdgeHandle> edgesToSplit;
 
+            //DEBUG
+            auto debugComponent = component;
+            //{
+
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) +  "_before.obj", opt);
+            //    }
+            //}
+
             for (auto fh : component)
             {
                 for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
@@ -2202,7 +2217,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     auto wn0 = pFWN[eh.v0()];
                     auto wn1 = pFWN[eh.v1()];
 
-                    if ((wn0 - 0.5) * (wn1 - 0.5) < 0 && std::fabs(wn0 - wn1) > 1e-2)
+                    if ((wn0 - 0.5) * (wn1 - 0.5) < 0 /*&& std::fabs(wn0 - wn1) > 1e-2*/)
                     {
                         m_mesh.set_color(eh.v0(), (wn0 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
                         m_mesh.set_color(eh.v1(), (wn1 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
@@ -2331,25 +2346,25 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 for (auto fh : newVh.faces())
                 {
                     //IO classification
-                    intersectionFace[fh] = true;
+                    intersectionFace[fh] = false;
 
-                    bool isInside = false;
-                    for (auto fvh : fh.vertices())
-                    {
-                        if (fvh == vh0 || fvh == vh1)
-                        {
-                            isInside = pFWN[fvh] >= 0.5;
-                        }
-                    }
+                    //bool isInside = false;
+                    //for (auto fvh : fh.vertices())
+                    //{
+                    //    if (fvh == vh0 || fvh == vh1)
+                    //    {
+                    //        isInside = pFWN[fvh] >= 0.5;
+                    //    }
+                    //}
 
-                    std::bitset<NBIT> thisFaceLabel = 0;
+                    //std::bitset<NBIT> thisFaceLabel = 0;
 
-                    if (isInside)
-                    {
-                        thisFaceLabel[other.m_intLabel] = 1;
-                    }
+                    //if (isInside)
+                    //{
+                    //    thisFaceLabel[other.m_intLabel] = 1;
+                    //}
 
-                    labeling[fh] = thisFaceLabel;
+                    //labeling[fh] = thisFaceLabel;
 
 
                     std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
@@ -2392,15 +2407,37 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
                         m_tIdToOriginalTId.push_back(newMAFhId);
 
+                        debugComponent.push_back(fh);
                     }
                 }
 
             }
 
-            //TODO: MAKE LAMBDA OUT OF THIS!!!
+            //debug
+            int cc = 0;
 
+            for (auto fh : debugComponent)
+            {
+                if (m_mesh.status(fh).deleted())
+                {
+                    continue;
+                }
+
+                m_mesh.set_color(fh, { 128, 128, 128 });
+
+                if (intersectionFace[fh])
+                {
+                    typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+                    m_mesh.set_color(fh, c);
+
+                }
+
+
+            }
+
+            //TODO: MAKE LAMBDA OUT OF THIS!!!
             //find components
-            for (auto fh : component)
+            for (auto fh : debugComponent)
             {
                 if (m_mesh.status(fh).deleted())
                 {
@@ -2457,12 +2494,39 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         m_mesh.status(topFace).set_tagged(true);
                     }
 
+                    ////DEBUG
+                    //{
+
+                    //    {
+                    //        MeshType meshPart;
+                    //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentFaces, true);
+
+                    //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                    //        opt += OpenMesh::IO::Options::FaceColor;
+                    //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(cc) + "_after.ply", opt);
+                    //        ++cc;
+                    //    }
+                    //}
+
                     //store this component
                     components.push_back(componentFaces);
                 }
             }
 
             //updateMatrices();
+
+            //DEBUG
+            //{
+
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        opt += OpenMesh::IO::Options::FaceColor;
+
+            //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_cmp_" + std::to_string(m_intLabel) + "_after.ply", opt);
+            //    }
+            //}
 
         };
 
@@ -2664,6 +2728,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             notLabeledComponents.push_back(componentId);
             componentsLabels.push_back(notLabeledLabel);
 
+            m_isolatedComponents.push_back(component);
+
             continue;
         }
 
@@ -2761,6 +2827,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
         
     }
+
+    return true;
 
     //reset tagged
     for (auto fh : m_mesh.faces())
