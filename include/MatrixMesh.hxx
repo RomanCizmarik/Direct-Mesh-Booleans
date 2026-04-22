@@ -2586,22 +2586,6 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     {
                         intersectionFace[fh] = false;
 
-                        std::bitset<NBIT> thisFaceLabel = 0;
-                        
-                        for (auto fvh : fh.vertices())
-                        {
-                            if (fvh == vh0)
-                            {
-                                thisFaceLabel[other.m_intLabel] = wn0 > 0.5; //inside of other mesh
-                            }
-
-                            if (fvh == vh1)
-                            {
-                                thisFaceLabel[other.m_intLabel] = wn1 > 0.5; //inside of other mesh
-                            }
-                        }
-
-                        labeling[fh] = thisFaceLabel;
 
                         std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
 
@@ -2650,16 +2634,31 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
+            //TODO: try flipping edges?
+
+
             for (auto newVh : newVertices)
             {
                 for (auto he : newVh.outgoing_halfedges())
                 {
                     pIntersectionEdge[he.edge()] = false;
 
-                    if (pNewVh[he.to()] || (intersectionVertex[he.to()] /*&& intersectionValance[he.to()] == 1*/) )
+                    if (pNewVh[he.to()] || (intersectionVertex[he.to()] && intersectionValance[he.to()] == 1) )
                     {
                         pIntersectionEdge[he.edge()] = true;
                         intersectionFace[he.face()] = true;
+
+                        std::bitset<NBIT> thisFaceLabel = 0;
+                        
+                        auto classifyingVh = he.next().to();
+
+                        const auto& p0 = m_mesh.point(classifyingVh);
+                        const auto& p1 = m_mesh.point(newVh);
+
+                        const double wn = intersectionVertex[classifyingVh] ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[classifyingVh];
+                        thisFaceLabel[other.m_intLabel] = wn > 0.5; //inside of other mesh
+
+                        labeling[he.face()] = thisFaceLabel;
                     }
                 }
             }
