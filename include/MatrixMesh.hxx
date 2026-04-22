@@ -2138,6 +2138,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
     OpenMesh::FProp<uint> pFhToMaFh(m_mesh, m_pFhToMaFh);
     OpenMesh::VProp<uint> pVhToMaVId(m_mesh, m_pVhToMaVId);
+    OpenMesh::VProp<int> intersectionValance(0, m_mesh);
 
     OpenMesh::FProp<bool> coplanarFace(m_mesh, m_pCoplanarFace);
 
@@ -2328,6 +2329,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         needsSplit = isInsideFWN != isInsideExact;
                     }
 
+
                     if (needsSplit)
                     {
                         for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
@@ -2340,6 +2342,17 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                             pEdgeToSplit[eh] = true;
                             edgesToSplit.insert(eh);
+                        }
+                    }
+
+                    //long triangles connecting two separate intersection areas
+                    for (auto feh : OpenMesh::make_smart(fh, m_mesh).edges())
+                    {
+                        if (!pIntersectionEdge[feh] && intersectionVertex[feh.v0()] && intersectionVertex[feh.v1()])
+                        {
+
+                            pEdgeToSplit[feh] = true;
+                            edgesToSplit.insert(feh);
                         }
                     }
                 }
@@ -2378,47 +2391,76 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             for (auto eh : edgesToSplit)
             {
                 auto sEh = OpenMesh::make_smart(eh, m_mesh);
-                
-                const auto originalFh0 = sEh.h0().face();
-                const auto originalFh1 = sEh.h1().face();
+                const auto baseVh0 = sEh.v0();
+                const auto baseVh1 = sEh.v1();
+                const auto baseP0 = m_mesh.point(baseVh0);
+                const auto baseP1 = m_mesh.point(baseVh1);
+                const auto edgeWn0 = intersectionVertex[baseVh0] ? acc->windingNumber(baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(0.01)) : pFWN[baseVh0];
+                const auto edgeWn1 = intersectionVertex[baseVh1] ? acc->windingNumber(baseP1 + (baseP0 - baseP1) * static_cast<tScalar>(0.01)) : pFWN[baseVh1];
+                const bool edgeHasCrossingInCutField = ((edgeWn0 - 0.5) * (edgeWn1 - 0.5)) < 0.0;
 
-                const bool fh0WasIntersectionFace = intersectionFace[originalFh0];
-                const bool fh1WasIntersectionFace = intersectionFace[originalFh1];
-
-                auto originalLabel = labeling[originalFh0] | labeling[originalFh1];
-
-                const auto vh0 = sEh.v0();
-                const auto vh1 = sEh.v1();
-
-                const auto& p0 = m_mesh.point(sEh.v0());
-                const auto& p1 = m_mesh.point(sEh.v1());
-
-                const auto wn0 = intersectionVertex[sEh.v0()] ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[sEh.v0()];
-                const auto wn1 = intersectionVertex[sEh.v1()] ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[sEh.v1()];
-                //const auto wn0 = pFWN[sEh.v0()];
-                //const auto wn1 = pFWN[sEh.v1()];
-
-                double t = 0.5;
-                const double f0 = wn0 - 0.5;
-                const double f1 = wn1 - 0.5;
-                const double denom = wn1 - wn0;
-
-
-                // Linear crossing is a good fallback.
-                if (std::fabs(denom) > 1e-12)
+                auto evalFWNAtT = [&](double t) -> double
                 {
-                    t = (0.5 - wn0) / denom;
+                    const auto p = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
+                    return acc->windingNumber(p);
+                };
+
+                const double endpointShift = 1e-4;
+                const double tStart = intersectionVertex[baseVh0] ? endpointShift : 0.0;
+                const double tEnd = intersectionVertex[baseVh1] ? (1.0 - endpointShift) : 1.0;
+
+                if (tEnd <= tStart)
+                {
+                    continue;
                 }
 
-                // Illinois (modified regula falsi) refinement on the bracket [0, 1].
-                // Near exact intersection vertices we keep linear interpolation on the blended field.
-                if ((f0 * f1) < 0.0)
+                struct tBracket
                 {
+                    double a;
+                    double b;
+                    double fa;
+                    double fb;
+                };
 
-                    double left = 0.0;
-                    double right = 1.0;
-                    double fLeft = f0;
-                    double fRight = f1;
+                std::vector<tBracket> brackets;
+                std::vector<double> splitParams;
+                const int sampleCount = 16;
+                const double rootEps = 1e-6;
+
+                double prevT = tStart;
+                double prevF = evalFWNAtT(prevT) - 0.5;
+
+                if (std::fabs(prevF) < rootEps)
+                {
+                    splitParams.push_back(prevT);
+                }
+
+                for (int si = 1; si <= sampleCount; ++si)
+                {
+                    const double currT = tStart + (tEnd - tStart) * (static_cast<double>(si) / sampleCount);
+                    const double currF = evalFWNAtT(currT) - 0.5;
+
+                    if (std::fabs(currF) < rootEps)
+                    {
+                        splitParams.push_back(currT);
+                    }
+
+                    if ((prevF * currF) < 0.0)
+                    {
+                        brackets.push_back({ prevT, currT, prevF, currF });
+                    }
+
+                    prevT = currT;
+                    prevF = currF;
+                }
+
+                for (const auto& br : brackets)
+                {
+                    double left = br.a;
+                    double right = br.b;
+                    double fLeft = br.fa;
+                    double fRight = br.fb;
+                    double tRoot = 0.5 * (left + right);
                     int lastSide = 0;
 
                     for (int i = 0; i < 8; ++i)
@@ -2430,11 +2472,10 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         }
 
                         const double x = (left * fRight - right * fLeft) / fpDenom;
-                        const auto pX = p0 + (p1 - p0) * static_cast<tScalar>(x);
-                        const double fX = acc->windingNumber(pX) - 0.5;
-                        t = x;
+                        const double fX = evalFWNAtT(x) - 0.5;
+                        tRoot = x;
 
-                        if (std::fabs(fX) < 1e-6)
+                        if (std::fabs(fX) < rootEps)
                         {
                             break;
                         }
@@ -2464,61 +2505,94 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                             break;
                         }
                     }
-                }
-               
 
-                // Keep the split vertex in the edge interior for robust topology updates.
-                if (t < 1e-6)
-                {
-                    t = 1e-6;
-                }
-                else if (t > 1.0 - 1e-6)
-                {
-                    t = 1.0 - 1e-6;
+                    splitParams.push_back(tRoot);
                 }
 
-                const auto splitPos = p0 + (p1 - p0) * static_cast<tScalar>(t);
-
-                auto newVh = m_mesh.split(sEh, splitPos);
-                
-                pNewVh[newVh] = true;
-
-                uint newMAVhId = ma.addVertex(splitPos[0], splitPos[1], splitPos[2]);
-                uint newLocalVhId = addVertex(splitPos[0], splitPos[1], splitPos[2], newMAVhId);
-                pVhToMaVId[newVh] = newLocalVhId;
-
-                newVertices.push_back(newVh);
-                
-
-                for (auto fh : newVh.faces())
+                if (splitParams.empty())
                 {
-                    //////IO classification
-                    //if ((fh == originalFh0 && fh0WasIntersectionFace) || (fh == originalFh1 && fh1WasIntersectionFace))
-                    //{
-                    //    //retain original IO classification
-                    //    ;
-                    //}
-                    //else
+                    if (edgeHasCrossingInCutField)
+                    {
+                        const double denom = edgeWn1 - edgeWn0;
+                        if (std::fabs(denom) > 1e-12)
+                        {
+                            splitParams.push_back((0.5 - edgeWn0) / denom);
+                        }
+                        else
+                        {
+                            splitParams.push_back(0.5);
+                        }
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+
+                std::sort(splitParams.begin(), splitParams.end());
+                splitParams.erase(std::unique(splitParams.begin(), splitParams.end(),
+                    [](double a, double b) { return std::fabs(a - b) < 1e-6; }), splitParams.end());
+
+                splitParams.erase(std::remove_if(splitParams.begin(), splitParams.end(),
+                    [](double t) { return t <= 1e-6 || t >= 1.0 - 1e-6; }), splitParams.end());
+
+                if (splitParams.empty())
+                {
+                    continue;
+                }
+
+                auto currentSplitEdge = sEh;
+                const auto endVh = baseVh1;
+
+                for (size_t splitIdx = 0; splitIdx < splitParams.size(); ++splitIdx)
+                {
+                    const auto originalFh0 = currentSplitEdge.h0().face();
+                    const auto originalFh1 = currentSplitEdge.h1().face();
+
+                    const auto vh0 = currentSplitEdge.v0();
+                    const auto vh1 = currentSplitEdge.v1();
+
+                    const auto& p0 = m_mesh.point(vh0);
+                    const auto& p1 = m_mesh.point(vh1);
+
+                    const auto wn0 = intersectionVertex[vh0] ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[vh0];
+                    const auto wn1 = intersectionVertex[vh1] ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[vh1];
+
+                    double t = splitParams[splitIdx];
+                    if (t < 1e-6)
+                    {
+                        t = 1e-6;
+                    }
+                    else if (t > 1.0 - 1e-6)
+                    {
+                        t = 1.0 - 1e-6;
+                    }
+
+                    const auto splitPos = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
+
+                    auto newVh = m_mesh.split(currentSplitEdge, splitPos);
+
+                    pNewVh[newVh] = true;
+                    pRawFWN[newVh] = acc->windingNumber(splitPos);
+                    pFWN[newVh] = 0.5;
+
+                    uint newMAVhId = ma.addVertex(splitPos[0], splitPos[1], splitPos[2]);
+                    uint newLocalVhId = addVertex(splitPos[0], splitPos[1], splitPos[2], newMAVhId);
+                    pVhToMaVId[newVh] = newLocalVhId;
+
+                    newVertices.push_back(newVh);
+
+                    for (auto fh : newVh.faces())
                     {
                         intersectionFace[fh] = false;
 
                         std::bitset<NBIT> thisFaceLabel = 0;
-
+                        
                         for (auto fvh : fh.vertices())
                         {
                             if (fvh == vh0)
                             {
                                 thisFaceLabel[other.m_intLabel] = wn0 > 0.5; //inside of other mesh
-
-                                ////take original exact labeling
-                                //if (intersectionVertex[vh0])
-                                //{
-                                //    thisFaceLabel = exactClassification[vh1];
-                                //}
-                                //if (intersectionVertex[vh1])
-                                //{
-                                //    thisFaceLabel = exactClassification[vh0];
-                                //}
                             }
 
                             if (fvh == vh1)
@@ -2528,54 +2602,52 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         }
 
                         labeling[fh] = thisFaceLabel;
+
+                        std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
+
+                        //update
+                        if (fh == originalFh0 || fh == originalFh1)
+                        {
+                            updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                            ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
+                        }
+                        //add new
+                        else
+                        {
+                            std::bitset<NBIT> thisMeshLabel = 0;
+                            thisMeshLabel[m_intLabel] = 1;
+
+                            uint newLocalTId = addNewFace(pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                            uint newMAFhId = ma.addNewFace(m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]], thisMeshLabel);
+                            pFhToMaFh[fh] = newLocalTId;
+
+                            //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
+                            m_tIdToOriginalTId.push_back(newMAFhId);
+
+                            debugComponent.push_back(fh);
+                        }
                     }
 
-
-                    std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
-
-                    //update
-                    if (fh == originalFh0 || fh == originalFh1)
+                    if (splitIdx + 1 < splitParams.size())
                     {
-                        //std::cout << faceVertices[0] << std::endl;
-                        //std::cout << faceVertices[1] << std::endl;
-                        //std::cout << faceVertices[2] << std::endl;
+                        bool foundNext = false;
+                        for (auto nextEh : newVh.edges())
+                        {
+                            auto sNextEh = OpenMesh::make_smart(nextEh, m_mesh);
+                            if ((sNextEh.v0() == newVh && sNextEh.v1() == endVh) || (sNextEh.v1() == newVh && sNextEh.v0() == endVh))
+                            {
+                                currentSplitEdge = sNextEh;
+                                foundNext = true;
+                                break;
+                            }
+                        }
 
-                        //std::cout << std::endl;
-                        //std::cout << pVhToMaVId[faceVertices[0]] << std::endl;
-                        //std::cout << pVhToMaVId[faceVertices[1]] << std::endl;
-                        //std::cout << pVhToMaVId[faceVertices[2]] << std::endl;
-
-                        //std::cout << std::endl;
-                        //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[0]]] << std::endl;
-                        //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[1]]] << std::endl;
-                        //std::cout << m_operandToMaVertices[pVhToMaVId[faceVertices[2]]] << std::endl;
-
-                        //std::cout << std::endl;
-                        //std::cout << pFhToMaFh[fh] << std::endl;
-                        //std::cout << m_tIdToOriginalTId[pFhToMaFh[fh]] << std::endl;
-                        //std::cout << "------------------------------" << std::endl;
-
-                        updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
-                        ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
-                    }
-                    //add new
-                    else
-                    {
-                        std::bitset<NBIT> thisMeshLabel = 0;
-                        thisMeshLabel[m_intLabel] = 1;
-
-                        uint newLocalTId = addNewFace(pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
-                        uint newMAFhId = ma.addNewFace(m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]], thisMeshLabel);
-                        pFhToMaFh[fh] = newLocalTId;
-
-                        //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
-                        m_tIdToOriginalTId.push_back(newMAFhId);
-
-                        debugComponent.push_back(fh);
+                        if (!foundNext)
+                        {
+                            break;
+                        }
                     }
                 }
-
-                
             }
 
             for (auto newVh : newVertices)
@@ -2584,7 +2656,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 {
                     pIntersectionEdge[he.edge()] = false;
 
-                    if (pNewVh[he.to()] || intersectionVertex[he.to()])
+                    if (pNewVh[he.to()] || (intersectionVertex[he.to()] /*&& intersectionValance[he.to()] == 1*/) )
                     {
                         pIntersectionEdge[he.edge()] = true;
                         intersectionFace[he.face()] = true;
@@ -2716,7 +2788,6 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         }
     }
 
-    OpenMesh::VProp<int> intersectionValance(0, m_mesh);
 
     for (auto vh : m_mesh.vertices())
     {
