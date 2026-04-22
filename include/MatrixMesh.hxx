@@ -2383,6 +2383,32 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
+            for (auto fh : component)
+            {
+                m_mesh.set_color(fh, { 192,192,192 });
+
+                int cnt = 0;
+                for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+                {
+                    if (pEdgeToSplit[eh])
+                        ++cnt;
+                }
+
+                if (cnt == 3)
+                {
+                    std::cout << "problematic face" << std::endl;
+
+                    m_mesh.set_color(fh, { 255,0,0 });
+
+                }
+
+                MeshType meshPart;
+                DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component, true);
+                OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                opt += OpenMesh::IO::Options::FaceColor;
+                OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) + "_problematic_faces.ply", opt);
+
+            }
             
 
 
@@ -2634,13 +2660,18 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
-            //TODO: try flipping edges?
+            //TODO: enforce iso contour by additional splits
 
 
             for (auto newVh : newVertices)
             {
                 for (auto he : newVh.outgoing_halfedges())
                 {
+                    if (!he.face().is_valid())
+                    {
+                        continue;
+                    }
+
                     pIntersectionEdge[he.edge()] = false;
 
                     if (pNewVh[he.to()] || (intersectionVertex[he.to()] && intersectionValance[he.to()] == 1) )
