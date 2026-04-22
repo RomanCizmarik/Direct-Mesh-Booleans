@@ -2145,6 +2145,18 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
     std::vector<std::vector<tFaceHandle>> components;
 
+
+    auto fwnToColor = [](double fwn) -> typename MeshType::Color
+        {
+            if (fwn <= 0.0) return { 0, 255, 0 };   // green
+            if (fwn >= 1.0) return { 255, 0, 0 };   // red
+
+            const double t = fwn; // 0..1
+            const unsigned char r = static_cast<unsigned char>(255.0 * t);
+            const unsigned char g = static_cast<unsigned char>(255.0 * (1.0 - t));
+            return { r, g, 0 }; // gradient green -> yellow -> red
+        };
+
     auto FWNBasedComponentSplit = [&, this](const std::vector<tFaceHandle>& component)
         {
             //TODO: THIS IS HIGHLY UNOPTIMAL!!! Use accessor, that rebuilds FWN only once for the whole run...
@@ -2154,50 +2166,72 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             OpenMesh::VProp<bool> pNewVh(false, m_mesh);
             OpenMesh::EProp<bool> pEdgeToSplit(false, m_mesh);
 
+            OpenMesh::VProp<bool> exactlyClassifiedVh(false, m_mesh);
+            OpenMesh::VProp<std::bitset<NBIT>> exactClassification(0, m_mesh);
+
             std::unordered_set<tVertexHandle> vertices;
             std::unordered_set<tEdgeHandle> edgesToSplit;
 
             //DEBUG
             auto debugComponent = component;
-            {
+            //{
 
-                for (auto fh : debugComponent)
-                {
-                    if (m_mesh.status(fh).deleted())
-                    {
-                        continue;
-                    }
+            //    for (auto fh : debugComponent)
+            //    {
+            //        if (m_mesh.status(fh).deleted())
+            //        {
+            //            continue;
+            //        }
 
-                    m_mesh.set_color(fh, { 128, 128, 128 });
+            //        m_mesh.set_color(fh, { 128, 128, 128 });
 
-                    if (intersectionFace[fh])
-                    {
-                        typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
-                        m_mesh.set_color(fh, c);
+            //        if (intersectionFace[fh])
+            //        {
+            //            typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+            //            m_mesh.set_color(fh, c);
 
-                    }
+            //        }
 
-                }
+            //    }
 
-                {
-                    MeshType meshPart;
-                    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
 
-                    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-                    opt += OpenMesh::IO::Options::FaceColor;
-                    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) +  "_before.obj", opt);
-                }
-            }
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        opt += OpenMesh::IO::Options::FaceColor;
+            //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) +  "_before.obj", opt);
+            //    }
+            //}
 
             for (auto fh : component)
             {
                 for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
                 {
                     vertices.insert(vh);
+
+                    if (intersectionFace[fh] && !intersectionVertex[vh])
+                    {
+                        exactlyClassifiedVh[vh] = true;
+                        exactClassification[vh] = labeling[fh];
+                    }
                 }
+
+                
             }
 
-            //compute FWN for each vertex of this component, except for the intersection vertices
+            OpenMesh::VProp<double> pRawFWN(0.0, m_mesh);
+
+            // Compute raw FWN for all component vertices.
+            for (auto vh : vertices)
+            {
+                pRawFWN[vh] = acc->windingNumber(m_mesh.point(vh));
+            }
+
+            // Build a cut-placement field:
+            //  - exact intersection vertices are fixed to 0.5
+            //  - one-ring neighbors of intersection vertices are blended towards 0.5
+            //  - all other vertices keep raw FWN
             for (auto vh : vertices)
             {
                 if (intersectionVertex[vh])
@@ -2206,77 +2240,108 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
                 else
                 {
-                    pFWN[vh] = acc->windingNumber(m_mesh.point(vh));
+                    bool adjacentToIntersection = false;
+                    for (auto outHe : OpenMesh::make_smart(vh, m_mesh).outgoing_halfedges())
+                    {
+                        if (intersectionVertex[outHe.to()])
+                        {
+                            adjacentToIntersection = true;
+                            break;
+                        }
+                    }
 
+                    const double raw = pRawFWN[vh];
+                    if (adjacentToIntersection)
+                    {
+                        constexpr double oneRingBlend = 0.35;
+                        pFWN[vh] = (1.0 - oneRingBlend) * raw + oneRingBlend * 0.5;
+                    }
+                    else
+                    {
+                        pFWN[vh] = raw;
+                    }
                 }
 
             }
 
             //DEBUG
-            for (auto vh : vertices)
-            {
-                m_mesh.set_color(vh, { 128, 128, 128 });
+            //{
+            //    for (auto vh : vertices)
+            //    {
+            //        //m_mesh.set_color(vh, { 128, 128, 128 });
 
-                if (pFWN[vh] == 0.5)
-                {
-                    m_mesh.set_color(vh, typename MeshType::Color{ 128, 128, 0 });
+            //        //if (pFWN[vh] == 0.5)
+            //        //{
+            //        //    m_mesh.set_color(vh, typename MeshType::Color{ 128, 128, 0 });
 
-                }
-                else if (pFWN[vh] > 0.5)
-                {
-                    m_mesh.set_color(vh, typename MeshType::Color{ 255, 0, 0 });
-                }
-                else
-                {
-                    m_mesh.set_color(vh, typename MeshType::Color{ 0, 255, 0 });
+            //        //}
+            //        //else if (pFWN[vh] > 0.5)
+            //        //{
+            //        //    m_mesh.set_color(vh, typename MeshType::Color{ 255, 0, 0 });
+            //        //}
+            //        //else
+            //        //{
+            //        //    m_mesh.set_color(vh, typename MeshType::Color{ 0, 255, 0 });
 
-                }
+            //        //}
+            //        m_mesh.set_color(vh, fwnToColor(pRawFWN[vh]));
+            //    }
 
-            }
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        opt += OpenMesh::IO::Options::FaceColor;
+            //        opt += OpenMesh::IO::Options::VertexColor;
+            //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) + "_FWN.off", opt);
+            //    }
+
+            //}
 
 
             for (auto fh : component)
             {
-                if (intersectionFace[fh])
-                {
-                    continue;
-                }
+                //if (intersectionFace[fh])
+                //{
+                //    continue;
+                //}
 
                 //intersection faces are treat in a different manner - check the remaining, non intersecting vertex, if it's exact classification is different then
                 //FWN field classification, split the edges connecting it to the exact intersection vertices
-                //if (intersectionFace[fh])
-                //{
-                //    bool isInsideExact = labeling[fh][other.m_intLabel] == 1;
-                //    bool needsSplit = false;
-                //    for (auto fvh : OpenMesh::make_smart(fh, m_mesh).vertices())
-                //    {
-                //        if (intersectionVertex[fvh] || needsSplit)
-                //        {
-                //            continue;
-                //        }
+                if (intersectionFace[fh])
+                {
+                    bool isInsideExact = labeling[fh][other.m_intLabel] == 1;
+                    bool needsSplit = false;
+                    for (auto fvh : OpenMesh::make_smart(fh, m_mesh).vertices())
+                    {
+                        if (intersectionVertex[fvh] || needsSplit)
+                        {
+                            continue;
+                        }
 
-                //        bool isInsideFWN = pFWN[fvh] > 0.5;
+                        bool isInsideFWN = pFWN[fvh] > 0.5;
 
-                //        //should be only one such vertex
-                //        needsSplit = isInsideFWN != isInsideExact;
-                //    }
+                        //should be only one such vertex
+                        needsSplit = isInsideFWN != isInsideExact;
+                    }
 
-                //    if (needsSplit)
-                //    {
-                //        for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
-                //        {
-                //            if (pIntersectionEdge[eh])
-                //            {
-                //                continue;
+                    if (needsSplit)
+                    {
+                        for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+                        {
+                            if (pIntersectionEdge[eh])
+                            {
+                                continue;
 
-                //            }
+                            }
 
-                //            pEdgeToSplit[eh] = true;
-                //            edgesToSplit.insert(eh);
-                //        }
-                //    }
-                //}
-                //else
+                            pEdgeToSplit[eh] = true;
+                            edgesToSplit.insert(eh);
+                        }
+                    }
+                }
+                else
                 {
                     for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
                     {
@@ -2300,19 +2365,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
-            //debug
-            {
-
-                {
-                    MeshType meshPart;
-                    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
-
-                    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-                    opt += OpenMesh::IO::Options::FaceColor;
-                    opt += OpenMesh::IO::Options::VertexColor;
-                    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) +  "_FWN.off", opt);
-                }
-            }
+            
 
 
             auto lastFaceId = m_mesh.faces_end()->idx();
@@ -2322,30 +2375,44 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 //TODO: gather existing faces before -> get newly created faces after -> add the new vertex to ma (carefull with newly allocated point, probably use arena allocator?) -> add new faces to ma -> update all mappings and properties, copy from ma/to ma
                 auto sEh = OpenMesh::make_smart(eh, m_mesh);
                 
-                auto originalFh0 = sEh.h0().face();
-                auto originalFh1 = sEh.h1().face();
+                const bool touchesIntersection = intersectionVertex[sEh.v0()] || intersectionVertex[sEh.v1()];
+
+                const auto originalFh0 = sEh.h0().face();
+                const auto originalFh1 = sEh.h1().face();
+
+                const bool fh0WasIntersectionFace = intersectionFace[originalFh0];
+                const bool fh1WasIntersectionFace = intersectionFace[originalFh1];
+
+                auto originalLabel = labeling[originalFh0] | labeling[originalFh1];
 
                 const auto vh0 = sEh.v0();
                 const auto vh1 = sEh.v1();
 
-                const auto wn0 = pFWN[sEh.v0()];
-                const auto wn1 = pFWN[sEh.v1()];
                 const auto p0 = m_mesh.point(sEh.v0());
                 const auto p1 = m_mesh.point(sEh.v1());
+
+                const auto wn0 = intersectionVertex[sEh.v0()] ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[sEh.v0()];
+                const auto wn1 = intersectionVertex[sEh.v1()] ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[sEh.v1()];
+                //const auto wn0 = pFWN[sEh.v0()];
+                //const auto wn1 = pFWN[sEh.v1()];
 
                 double t = 0.5;
                 const double f0 = wn0 - 0.5;
                 const double f1 = wn1 - 0.5;
-                // Linear crossing is a good fallback.
                 const double denom = wn1 - wn0;
+
+
+                // Linear crossing is a good fallback.
                 if (std::fabs(denom) > 1e-12)
                 {
                     t = (0.5 - wn0) / denom;
                 }
 
                 // Illinois (modified regula falsi) refinement on the bracket [0, 1].
-                if ((f0 * f1) < 0.0)
+                // Near exact intersection vertices we keep linear interpolation on the blended field.
+                if ((f0 * f1) < 0.0 /*&& !touchesIntersection*/)
                 {
+
                     double left = 0.0;
                     double right = 1.0;
                     double fLeft = f0;
@@ -2396,6 +2463,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         }
                     }
                 }
+                //else
+                //{
+                //    //????
+                //    t = 0.5;
+                //}
 
                 // Keep the split vertex in the edge interior for robust topology updates.
                 if (t < 1e-6)
@@ -2417,43 +2489,44 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 uint newLocalVhId = addVertex(splitPos[0], splitPos[1], splitPos[2], newMAVhId);
                 pVhToMaVId[newVh] = newLocalVhId;
 
+                newVertices.push_back(newVh);
                 
-                for (auto he : newVh.outgoing_halfedges())
-                {
-                    pIntersectionEdge[he.edge()] = false;
-
-                    if (pNewVh[he.to()] || intersectionVertex[he.to()])
-                    {
-                        pIntersectionEdge[he.edge()] = true;
-                    }
-                }
 
                 for (auto fh : newVh.faces())
                 {
-                    ////IO classification
-                    //if ((fh == originalFh0 && intersectionFace[fh]) || (fh == originalFh1 && intersectionFace[fh]))
+                    //////IO classification
+                    //if ((fh == originalFh0 && fh0WasIntersectionFace) || (fh == originalFh1 && fh1WasIntersectionFace))
                     //{
                     //    //retain original IO classification
                     //    ;
                     //}
                     //else
                     {
-                        intersectionFace[fh] = true;
-
-                        bool isInside = false;
-                        for (auto fvh : fh.vertices())
-                        {
-                            if (fvh == vh0 || fvh == vh1)
-                            {
-                                isInside = pFWN[fvh] >= 0.5;
-                            }
-                        }
+                        intersectionFace[fh] = false;
 
                         std::bitset<NBIT> thisFaceLabel = 0;
 
-                        if (isInside)
+                        for (auto fvh : fh.vertices())
                         {
-                            thisFaceLabel[other.m_intLabel] = 1;
+                            if (fvh == vh0)
+                            {
+                                thisFaceLabel[other.m_intLabel] = wn0 > 0.5; //inside of other mesh
+
+                                ////take original exact labeling
+                                //if (intersectionVertex[vh0])
+                                //{
+                                //    thisFaceLabel = exactClassification[vh1];
+                                //}
+                                //if (intersectionVertex[vh1])
+                                //{
+                                //    thisFaceLabel = exactClassification[vh0];
+                                //}
+                            }
+
+                            if (fvh == vh1)
+                            {
+                                thisFaceLabel[other.m_intLabel] = wn1 > 0.5; //inside of other mesh
+                            }
                         }
 
                         labeling[fh] = thisFaceLabel;
@@ -2507,9 +2580,19 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 
             }
 
-            
+            for (auto newVh : newVertices)
+            {
+                for (auto he : newVh.outgoing_halfedges())
+                {
+                    pIntersectionEdge[he.edge()] = false;
 
-            
+                    if (pNewVh[he.to()] || intersectionVertex[he.to()])
+                    {
+                        pIntersectionEdge[he.edge()] = true;
+                        intersectionFace[he.face()] = true;
+                    }
+                }
+            }
 
             //TODO: MAKE LAMBDA OUT OF THIS!!!
             //find components
@@ -2592,36 +2675,36 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //updateMatrices();
 
             //DEBUG
-            {
-                int cc = 0;
+            //{
+            //    int cc = 0;
 
-                for (auto fh : debugComponent)
-                {
-                    if (m_mesh.status(fh).deleted())
-                    {
-                        continue;
-                    }
+            //    for (auto fh : debugComponent)
+            //    {
+            //        if (m_mesh.status(fh).deleted())
+            //        {
+            //            continue;
+            //        }
 
-                    m_mesh.set_color(fh, { 128, 128, 128 });
+            //        m_mesh.set_color(fh, { 128, 128, 128 });
 
-                    if (intersectionFace[fh])
-                    {
-                        typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
-                        m_mesh.set_color(fh, c);
+            //        if (intersectionFace[fh])
+            //        {
+            //            typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+            //            m_mesh.set_color(fh, c);
 
-                    }
+            //        }
 
-                }
+            //    }
 
-                {
-                    MeshType meshPart;
-                    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
-                    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-                    opt += OpenMesh::IO::Options::FaceColor;
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        opt += OpenMesh::IO::Options::FaceColor;
 
-                    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_cmp_" + std::to_string(m_intLabel) + "_after.obj", opt);
-                }
-            }
+            //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_cmp_" + std::to_string(m_intLabel) + "_after.obj", opt);
+            //    }
+            //}
 
         };
 
