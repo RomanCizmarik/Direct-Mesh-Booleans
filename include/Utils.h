@@ -340,5 +340,31 @@ namespace DMB
         }
     }
 
+    template<typename MeshType>
+    typename MeshType::Scalar calcAverageEdgeLength(const MeshType& mesh)
+    {
+        using tScalar = typename MeshType::Scalar;
+
+        tScalar avgLength(0);
+        std::size_t edgeCount = 0;
+
+        if (mesh.n_edges() == 0)
+        {
+            return avgLength;
+        }
+
+        for (auto eh : mesh.edges())
+        {
+            avgLength += mesh.calc_edge_length(eh);
+            edgeCount++;
+        }
+
+        if (edgeCount)
+        {
+            avgLength /= edgeCount;
+        }
+
+        return avgLength;
+    }
 
 } //namespace

@@ -104,6 +104,11 @@ namespace DMB
             }
         }
 
+
+        //TODO: make MA member
+        std::vector<tFaceHandle> splitAndRelabelComponent(const std::vector<tFaceHandle>& component, double edgeLenghtSplitLimit, MeshArrangement<MeshType>& ma);
+         tVertexHandle splitEdge(tEdgeHandle eh, const tPoint& splitPos, MeshArrangement<MeshType>& ma);
+
         bool disconnectComponents(MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other);
 
         void classifyIsolatedComponents(MatrixMesh<MeshType>& other);
