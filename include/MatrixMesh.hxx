@@ -2307,6 +2307,62 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             }
 
+            auto edgeCrossesFWNField = [&](OpenMesh::SmartEdgeHandle eh,
+                const std::shared_ptr<tFWN>& acc,
+                double iso = 0.5,
+                int sampleCount = 16,
+                double eps = 1e-3) -> bool
+                {
+                    if (!acc || !eh.is_valid() || eh.deleted())
+                    {
+                        return false;
+                    }
+
+                    sampleCount = std::max(sampleCount, 2);
+
+                    const auto p0 = m_mesh.point(eh.v0());
+                    const auto p1 = m_mesh.point(eh.v1());
+
+                    auto eval = [&](double t) -> double
+                        {
+                            const auto p = p0 + (p1 - p0) * static_cast<tScalar>(t);
+                            return acc->windingNumber(p) - iso;
+                        };
+
+                    double prev = eval(0.0);
+                    double minG = prev;
+                    double maxG = prev;
+
+                    //if (std::fabs(prev) <= eps)
+                    //{
+                    //    return true;
+                    //}
+
+                    for (int i = 1; i <= sampleCount; ++i)
+                    {
+                        const double t = static_cast<double>(i) / static_cast<double>(sampleCount);
+                        const double g = eval(t);
+
+                        minG = std::min(minG, g);
+                        maxG = std::max(maxG, g);
+
+                        if (std::fabs(g) <= eps)
+                        {
+                            return true;
+                        }
+
+                        if ((prev < -eps && g > eps) || (prev > eps && g < -eps))
+                        {
+                            return true;
+                        }
+
+                        prev = g;
+                    }
+
+                    // catches even number of crossings when endpoints are on same side
+                    return (minG < -eps && maxG > eps);
+                };
+
             double smallAngle = M_PI / 16.0;
             double limitAngleCos = std::cos(smallAngle);
 
@@ -2362,7 +2418,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                     //const double midFWN = acc->windingNumber(p0 + p1 * 0.5);
 
-                    if ((wn0 - 0.5) * (wn1 - 0.5) < 0 && opposingAnglesAreGreaterThanCheck(eh)/*&& std::fabs(midFWN -0.5) > 1e-2*//*&& std::fabs(wn0 - wn1) > 1e-2*/)
+                    if ((wn0 - 0.5) * (wn1 - 0.5) < 0 /*&& opposingAnglesAreGreaterThanCheck(eh)*/ /*&& std::fabs(midFWN -0.5) > 1e-2*//*&& std::fabs(wn0 - wn1) > 1e-2*/)
                     {
                         //m_mesh.set_color(eh.v0(), (wn0 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
                         //m_mesh.set_color(eh.v1(), (wn1 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
@@ -2415,17 +2471,17 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     }
 
                     //long triangles connecting two separate intersection areas
-                    //for (auto feh : OpenMesh::make_smart(fh, m_mesh).edges())
-                    //{
-                    //    //const double midFWN = acc->windingNumber((m_mesh.point(feh.h0().from()) + m_mesh.point(feh.h0().to())) * 0.5);
+                    for (auto feh : OpenMesh::make_smart(fh, m_mesh).edges())
+                    {
+                        //const double midFWN = acc->windingNumber((m_mesh.point(feh.h0().from()) + m_mesh.point(feh.h0().to())) * 0.5);
 
-                    //    if (!pIntersectionEdge[feh] && intersectionVertex[feh.v0()] && intersectionVertex[feh.v1()] /*&& std::fabs(midFWN -0.5) > 1e-3*/)
-                    //    {
+                        if (!pIntersectionEdge[feh] && intersectionVertex[feh.v0()] && intersectionVertex[feh.v1()] /*&& std::fabs(midFWN -0.5) > 1e-3*/)
+                        {
 
-                    //        pEdgeToSplit[feh] = true;
-                    //        edgesToSplit.insert(feh);
-                    //    }
-                    //}
+                            pEdgeToSplit[feh] = true;
+                            edgesToSplit.insert(feh);
+                        }
+                    }
                 }
                 else
                 {
@@ -2466,6 +2522,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //}
             
 
+            std::unordered_set<tEdgeHandle> edgesToFlip;
 
             auto lastFaceId = m_mesh.faces_end()->idx();
             std::vector<OpenMesh::SmartVertexHandle> newVertices;
@@ -2637,6 +2694,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                     const auto vh0 = currentSplitEdge.v0();
                     const auto vh1 = currentSplitEdge.v1();
+                    auto vr = currentSplitEdge.h0().next().to();
+                    auto vl = currentSplitEdge.h1().next().to();
 
                     const auto& p0 = m_mesh.point(vh0);
                     const auto& p1 = m_mesh.point(vh1);
@@ -2670,7 +2729,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                     for (auto fh : newVh.faces())
                     {
-                        intersectionFace[fh] = false;
+                        //TODO: this can remove the original intersection face - add he labeling
+                        //intersectionFace[fh] = false;
 
 
                         std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
@@ -2698,6 +2758,20 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         }
                     }
 
+                    //for (auto he : newVh.outgoing_halfedges())
+                    //{
+                    //    if (he.to() == vl || he.to() == vr)
+                    //    {
+                    //        if (edgeCrossesFWNField(he.edge(), acc))
+                    //        {
+                    //            //pEdgeToSplit[he.edge()] = true;
+                    //            //edgesToSplit.insert(he.edge());
+                    //            edgesToFlip.insert(he.edge());
+                    //        }
+                    //    }
+                    //    
+                    //}
+
                     if (splitIdx + 1 < splitParams.size())
                     {
                         bool foundNext = false;
@@ -2718,15 +2792,15 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         }
                     }
 
-                    for (auto eh : newVh.edges())
-                    {
-                        if (eh == currentSplitEdge)
-                        {
-                            continue;
-                        }
+                    //for (auto eh : newVh.edges())
+                    //{
+                    //    if (eh == currentSplitEdge)
+                    //    {
+                    //        continue;
+                    //    }
 
-                        checkEdgeSplit(eh);
-                    }
+                    //    checkEdgeSplit(eh);
+                    //}
 
                     //{
                     //    MeshType meshPart;
@@ -2739,6 +2813,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                 }
             }
+
+            
 
             //TODO: enforce iso contour
             auto updateFaceInMA = [&](OpenMesh::SmartFaceHandle fh)
@@ -2753,8 +2829,27 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
                 };
 
-            //TODO: this is not correct, use queu and checks like it should be
-            std::unordered_set<tEdgeHandle> edgesToFlip;
+
+
+            auto numericalGradient = [&acc](const tPoint& p, double eps = 1e-5) -> tPoint
+                {
+                    //const double eps = 1e-5;
+
+                    double dx = acc->windingNumber(tPoint(p[0] + eps, p[1], p[2])) -
+                        acc->windingNumber(tPoint(p[0] - eps, p[1], p[2]));
+
+                    double dy = acc->windingNumber(tPoint(p[0], p[1] + eps, p[2])) -
+                        acc->windingNumber(tPoint(p[0], p[1] - eps, p[2]));
+
+                    double dz = acc->windingNumber(tPoint(p[0], p[1], p[2] + eps)) -
+                        acc->windingNumber(tPoint(p[0], p[1], p[2] - eps));
+
+                    tPoint grad(dx, dy, dz);
+                    grad.normalize();
+                    return grad;
+                };
+
+
 
             for (auto newVh : newVertices)
             {
@@ -2775,25 +2870,74 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     auto vr = eh.h0().next().to();
                     auto vl = eh.h1().next().to();
 
-                    
+
                     if (pNewVh[vr] && pNewVh[vl])
                     {
-                        const double midFWN = acc->windingNumber((m_mesh.point(vr) + m_mesh.point(vl)) * 0.5);
+                        //const double midFWN = acc->windingNumber((m_mesh.point(vr) + m_mesh.point(vl)) * 0.5);
+                        //const auto& p0 = m_mesh.point(eh.v0());
+                        //const auto& p1 = m_mesh.point(eh.v1());
+
+                        //const auto wn0 = (intersectionVertex[eh.v0()] || pNewVh[eh.v0()]) ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[eh.v0()];
+                        //const auto wn1 = (intersectionVertex[eh.v1()] || pNewVh[eh.v1()]) ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[eh.v1()];
+
+                        //if (std::fabs(midFWN - 0.5) < 1e-2 || (wn0 - 0.5) * (wn1 - 0.5) < 0)
+                        //{
+                        //    edgesToFlip.insert(eh);
+                        //}
+
                         const auto& p0 = m_mesh.point(eh.v0());
                         const auto& p1 = m_mesh.point(eh.v1());
+                        const auto& pr = m_mesh.point(vr);
+                        const auto& pl = m_mesh.point(vl);
 
-                        const auto wn0 = (intersectionVertex[eh.v0()] || pNewVh[eh.v0()]) ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[eh.v0()];
-                        const auto wn1 = (intersectionVertex[eh.v1()] || pNewVh[eh.v1()]) ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[eh.v1()];
+                        const auto g_p0 = numericalGradient(p0);
+                        const auto g_p1 = numericalGradient(p1);
+                        const auto g_pr = numericalGradient(pr);
+                        const auto g_pl = numericalGradient(pl);
 
-                        //const double midFWN = acc->windingNumber(p0 + p1 * 0.5);
-
-
-                        if (std::fabs(midFWN - 0.5) < 1e-2 || (wn0 - 0.5) * (wn1 - 0.5) < 0)
+                        if (DMB::dot(g_pr, g_pl) > DMB::dot(g_p0, g_p1))
                         {
                             edgesToFlip.insert(eh);
                         }
+
+                        //if (edgeCrossesFWNField(OpenMesh::make_smart(eh, m_mesh), acc))
+                        //{
+                        //    edgesToFlip.insert(eh);
+                        //}
                     }
 
+                }
+            }
+
+            //DEBUG
+            {
+                for (auto fh : debugComponent)
+                {
+                    if (m_mesh.status(fh).deleted())
+                    {
+                        continue;
+                    }
+
+                    for(auto vh: OpenMesh::make_smart(fh, m_mesh).vertices())
+                        m_mesh.set_color(vh, { 128, 128, 128 });
+
+                }
+
+                for (auto eh : edgesToFlip)
+                {
+                    m_mesh.set_color(OpenMesh::make_smart(eh, m_mesh).v0(), {255, 0, 0});
+                    m_mesh.set_color(OpenMesh::make_smart(eh, m_mesh).v1(), {255, 0, 0});
+                    
+                }
+
+                {
+                    MeshType meshPart;
+                    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+                    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                    opt += OpenMesh::IO::Options::FaceColor;
+                    opt += OpenMesh::IO::Options::VertexColor;
+
+                    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_cmp_" + std::to_string(m_intLabel) + "_before_flip.ply", opt);
                 }
             }
 
@@ -2847,7 +2991,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             OpenMesh::EProp<bool> edgeClassifed(false, m_mesh);
             OpenMesh::FProp<bool> faceClassifed(false, m_mesh);
 
-#if 0
+#if 1
 
             for (auto newVh : newVertices)
             {
@@ -2865,7 +3009,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                     if ((pNewVh[he.to()]) || (intersectionVertex[he.to()] && intersectionValance[he.to()] == 1))
                     {
-                        pIntersectionEdge[he.edge()] = false;
+                        pIntersectionEdge[he.edge()] = true;
                         intersectionFace[he.face()] = true;
 
                         std::bitset<NBIT> thisFaceLabel = 0;
@@ -2875,7 +3019,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         const auto& p0 = m_mesh.point(classifyingVh);
                         const auto& p1 = m_mesh.point(newVh);
 
-                        const double wn = (intersectionVertex[classifyingVh]) ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[classifyingVh];
+                        const double wn = (intersectionVertex[classifyingVh] || pNewVh[classifyingVh]) ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[classifyingVh];
                         thisFaceLabel[other.m_intLabel] = wn > 0.5; //inside of other mesh
 
                         labeling[he.face()] = thisFaceLabel;
@@ -3015,15 +3159,15 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     components.push_back(componentFaces);
 
                     //debug
-                    {
-                        ++cntNewComponents;
+                    //{
+                    //    ++cntNewComponents;
 
-                        MeshType meshPart;
-                        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentFaces, true);
-                        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                    //    MeshType meshPart;
+                    //    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentFaces, true);
+                    //    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
 
-                        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/new_cmp_" + std::to_string(m_intLabel) + "_" +std::to_string(cntNewComponents) +".obj", opt);
-                    }
+                    //    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/new_cmp_" + std::to_string(m_intLabel) + "_" +std::to_string(cntNewComponents) +".obj", opt);
+                    //}
                 }
             }
 
@@ -3044,7 +3188,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                     m_mesh.set_color(fh, { 128, 128, 128 });
 
-                    //if (intersectionFace[fh])
+                    if (intersectionFace[fh])
                     {
                         typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
                         m_mesh.set_color(fh, c);
@@ -3379,9 +3523,9 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         }
         else
         {
-            auto splitComponent = splitAndRelabelComponent(component, edgeSplitLimit, ma);
+            //auto splitComponent = splitAndRelabelComponent(component, edgeSplitLimit, ma);
             //further FWN based component split
-            FWNBasedComponentSplit(splitComponent);
+            FWNBasedComponentSplit(component);
         }
 
         
