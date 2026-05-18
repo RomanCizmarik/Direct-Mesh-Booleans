@@ -367,4 +367,53 @@ namespace DMB
         return avgLength;
     }
 
+
+
+    template<typename MeshType>
+    double cotan(const MeshType& mesh, OpenMesh::HalfedgeHandle heI)
+    {
+
+        if (mesh.is_boundary(mesh.edge_handle(heI)))
+        {
+            return typename MeshType::Scalar(0);
+        }
+
+        auto sHe = OpenMesh::make_smart(heI, mesh);
+
+        auto he0 = sHe.next();
+        auto he1 = he0.next();
+
+        auto v0 = he0.from();
+        auto v1 = he1.from(); //compute cotan at this vertex
+        auto v2 = sHe.from();
+
+        const auto& p0 = mesh.point(v0);
+        const auto& p1 = mesh.point(v1);
+        const auto& p2 = mesh.point(v2);
+
+        auto edgeVector0 = p0 - p1;
+        auto edgeVector1 = p2 - p1;
+
+        return  dot(edgeVector0, edgeVector1) / DMB::length(cross(edgeVector0, edgeVector1));
+    }
+
+    template<typename MeshType>
+    double  edgeCotanWeight(const MeshType& m, typename MeshType::EdgeHandle eh)
+    {
+        double sum = 0;
+        for (auto he : OpenMesh::make_smart(eh, m).halfedges())
+        {
+            sum += DMB::cotan(m, he);
+        }
+        return sum;
+    };
+
+    template<typename MeshType>
+    bool edgeIsDelaunay(const MeshType& m, typename MeshType::EdgeHandle eh, double delaunayCotanLimit = 1e-6)
+    {
+        double cWeight = DMB::edgeCotanWeight(m, eh);
+        return (cWeight > -delaunayCotanLimit);
+    };
+
+
 } //namespace
