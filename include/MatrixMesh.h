@@ -243,6 +243,8 @@ namespace DMB
         uint addNewFace(uint vh0, uint vh1, uint vh2);
         void updateFace(uint fh, uint vh0, uint vh1, uint vh2);
 
+        void FWNSplit(const std::vector<tFaceHandle>& component, MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other);
+
         template<typename F>
         void debug_showMesh(const F& func);
 
@@ -302,6 +304,7 @@ namespace DMB
         OpenMesh::VPropHandleT<uint> m_pVhToMaVId;
         OpenMesh::VPropHandleT<bool> m_pCoplanarVertex;
         OpenMesh::EPropHandleT<bool> m_pCoplanarEdge;
+        OpenMesh::VPropHandleT<bool> m_pIntersectionVertex;
 
         //can this be optimized somehow? this can take up a lot of memory, maybe it's an unnecessary copy
         std::vector<std::vector<tFaceHandle>> m_isolatedComponents;
