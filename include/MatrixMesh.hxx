@@ -3224,7 +3224,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         continue;
                     }
 
-                    if (labeling[eh.h0().face()] != labeling[eh.h1().face()] || (pNewVh[eh.v0()] && pNewVh[eh.v1()]))
+                    if (labeling[eh.h0().face()] != labeling[eh.h1().face()]/* || (pNewVh[eh.v0()] && pNewVh[eh.v1()])*/)
                     {
                         pIntersectionEdge[eh] = true;
                         intersectionFace[eh.h0().face()] = true;
@@ -3381,7 +3381,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         opt += OpenMesh::IO::Options::FaceColor;
                        
 
-                        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/new_cmp_" + std::to_string(m_intLabel) + "_" +std::to_string(cntNewComponents) +".obj", opt);
+                        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/new_cmp_" + std::to_string(m_intLabel) + "_" +std::to_string(cntNewComponents) +".ply", opt);
                     }
                 }
             }
