@@ -2168,7 +2168,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             return { r, g, 0 }; // gradient green -> yellow -> red
         };
 
-    auto FWNBasedComponentSplit = [&, this](const std::vector<tFaceHandle>& component)
+    //componnet will be directly modified
+    auto FWNBasedComponentSplit = [&, this](std::vector<tFaceHandle>& component)
         {
             //TODO: THIS IS HIGHLY UNOPTIMAL!!! Use accessor, that rebuilds FWN only once for the whole run...
             auto acc = other.getFWN();
@@ -2251,7 +2252,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             };
 
             //DEBUG
-            auto debugComponent = component;
+            //auto debugComponent = component;
 
             //{
 
@@ -2847,7 +2848,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                             //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
                             m_tIdToOriginalTId.push_back(newMAFhId);
 
-                            debugComponent.push_back(fh);
+                            //directly modify the original component
+                            component.push_back(fh);
                             newFaces.push_back(fh);
                         }
                     }
@@ -3026,10 +3028,10 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             OpenMesh::EProp<bool> edgeClassifed(false, m_mesh);
             OpenMesh::FProp<bool> faceClassifed(false, m_mesh);
 
-            makeUniqueVector(debugComponent);
+            makeUniqueVector(component);
 
             //reaply original labelings
-            for (auto fh : debugComponent)
+            for (auto fh : component)
             {
                 intersectionFace[fh] = false;
 
@@ -3297,7 +3299,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //TODO: MAKE LAMBDA OUT OF THIS!!!
             //find components
             int cntNewComponents = 0;
-            for (auto fh : debugComponent)
+            for (auto fh : component)
             {
                 if (m_mesh.status(fh).deleted())
                 {
@@ -3544,7 +3546,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
     //int maxComponents = components.size();
     for (uint  componentId = 0; componentId < components.size(); ++componentId)
     {
-        const auto& component = components[componentId];
+        auto& component = components[componentId];
 
         //find seed label
         std::bitset<NBIT> seedLabel;
