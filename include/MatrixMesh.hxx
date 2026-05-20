@@ -31,6 +31,8 @@ inline DMB::MatrixMesh<MeshType>::MatrixMesh(int label, const MeshArrangement<Me
 
     //buildOperand(ma);
     //buildManifoldMesh();
+
+    m_accAccessor.setMesh(&m_mesh);
 }
 
 
@@ -1489,6 +1491,8 @@ inline bool DMB::MatrixMesh<MeshType>::buildManifoldMesh(bool considerOrigin/* =
         addFace(tId);
     }
 
+    m_accAccessor.setDirty();
+
     return success;
 }
 
@@ -2172,7 +2176,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
     auto FWNBasedComponentSplit = [&, this](std::vector<tFaceHandle>& component)
         {
             //TODO: THIS IS HIGHLY UNOPTIMAL!!! Use accessor, that rebuilds FWN only once for the whole run...
-            auto acc = other.getFWN();
+            //auto acc = other.getFWN();
+            auto acc = other.getAcceleratorAccessor()->getFastWindingNumber();
 
             OpenMesh::VProp<double> pFWN(0.0, m_mesh);
             OpenMesh::VProp<double> pRawFWN(0.0, m_mesh);
@@ -3428,6 +3433,14 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //    }
             //}
 
+            //update normals and invaldiate acc accessor
+            //for (auto fh : component)
+            //{
+            //    m_mesh.update_normal(fh);
+            //}
+
+            //m_accAccessor.setDirty();
+
         };
 
     //mark all intersection vertices
@@ -3696,10 +3709,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         }
         else
         {
-            //auto splitComponent = splitAndRelabelComponent(component, edgeSplitLimit, ma);
             //further FWN based component split
             FWNBasedComponentSplit(component);
-            //FWNSplit(component, ma, other);
+
+            //TODO: if there are any issues with FWN, enable this line
+            //Strictly speaking this is not neccessary... We have only split some edges/faces - the FWN field did not change at all
+            //m_accAccessor.setDirty();
         }
 
         
@@ -4091,7 +4106,7 @@ inline void DMB::MatrixMesh<MeshType>::classifyIsolatedComponents(MatrixMesh<Mes
     // TODO: REWORK for variadic booleans
 
     //we need to build FWN of the other mesh
-    auto acc = other.getFWN();
+    auto acc = other.getAcceleratorAccessor()->getFastWindingNumber();
 
     static const int nSamples = 10;
 
@@ -4135,17 +4150,17 @@ inline void DMB::MatrixMesh<MeshType>::classifyIsolatedComponents(MatrixMesh<Mes
     }
 }
 
-template<typename MeshType>
-inline std::shared_ptr <typename DMB::MatrixMesh<MeshType>::tFWN> DMB::MatrixMesh<MeshType>::getFWN()
-{
-    // TODO: REWORK for variadic booleans
-
-    m_mesh.update_normals();
-    auto acc = std::make_shared<tFWN>();
-    acc->build(m_mesh);
-
-    return acc;
-}
+//template<typename MeshType>
+//inline std::shared_ptr <typename DMB::MatrixMesh<MeshType>::tFWN> DMB::MatrixMesh<MeshType>::getFWN()
+//{
+//    // TODO: REWORK for variadic booleans
+//
+//    m_mesh.update_normals();
+//    auto acc = std::make_shared<tFWN>();
+//    acc->build(m_mesh);
+//
+//    return acc;
+//}
 
 template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::detectBoundaries()

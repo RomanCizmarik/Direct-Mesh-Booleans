@@ -6,6 +6,7 @@
 //#include "HelperDefines.h"
 #include "MeshArrangement.h"
 #include "FastWindingNumber.h"
+#include "AcceleratorAccessor.h"
 
 #include <Eigen/SparseCore>
 
@@ -27,6 +28,7 @@ namespace DMB
         using tTriangle = std::array<tPoint, 3>;
         using tTriangleIndices = std::array<uint, 3>;
         using tFWN = typename FastWindingNumber<MeshType>;
+        using tAcceleratorAccessor = typename AcceleratorAccessor<MeshType>;
 
     public:
         MatrixMesh(int label, const MeshArrangement<MeshType>& ma);
@@ -42,6 +44,8 @@ namespace DMB
             m_label = bitsetLabel;
 
             buildOperand(ma, filterFunction);
+
+            m_accAccessor.setMesh(&m_mesh);
         }
         uint getFaceEdgeId(uint tId, int i);
 
@@ -112,7 +116,8 @@ namespace DMB
         bool disconnectComponents(MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other);
 
         void classifyIsolatedComponents(MatrixMesh<MeshType>& other);
-        std::shared_ptr<tFWN> getFWN();
+        //std::shared_ptr<tFWN> getFWN();
+        tAcceleratorAccessor* getAcceleratorAccessor() { return &m_accAccessor; }
 
         template<typename F>
         void classifyMeshArrangement(MeshArrangement<MeshType>& ma, int operandLabel, const F& predicate);
@@ -293,6 +298,7 @@ namespace DMB
         std::vector<tVertexHandle> m_matrixVhToOMVh;
 
         MeshType m_mesh;
+        tAcceleratorAccessor m_accAccessor;
 
         //mesh properties
         OpenMesh::FPropHandleT<uint> m_pFhToMaFh;
