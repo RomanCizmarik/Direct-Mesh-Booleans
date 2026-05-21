@@ -1,0 +1,22 @@
+{
+  "seed": 12345,
+  "num_pairs": 32,
+  "operations": ["union", "intersection", "difference"],
+  "spheres": {
+    "count_min": 1,
+    "count_max": 2,
+    "radius_min_frac": 0.02,
+    "radius_max_frac": 0.06,
+    "center_mode": "surface",
+    "stacks": 14,
+    "slices": 28
+  },
+  "metrics": {
+    "sample_count": 8000,
+    "boundary_fscore_tol_frac": 0.001
+  },
+  "method_under_test": {
+    "name": "libigl",
+    "external_command_template": ""
+  }
+}
