@@ -14,5 +14,8 @@
   "metrics": {
     "sample_count": 8000,
     "boundary_fscore_tol_frac": 0.001
+  },
+  "debug": {
+    "save_cut_meshes": false
   }
 }

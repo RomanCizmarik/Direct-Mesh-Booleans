@@ -42,8 +42,7 @@ Config template:
     "int": "..."
   },
   "output_path": "method_output_dir",
-  "save_output_meshes": true,
-  "allow_empty_output_mesh": false
+  "save_output_meshes": true
 }
 ```
 
@@ -56,7 +55,19 @@ Config template:
   - absolute path => used directly
   - relative path => relative to `--output-dir`
 - `save_output_meshes`: if `true`, saves produced `Y` meshes to `<output_path>\meshes\`
-- `allow_empty_output_mesh` (optional, default `false`): if `false`, header-only/empty meshes are treated as method failure
+
+## Debug output control
+
+`benchmark\config\default_config.json` contains:
+
+```json
+"debug": {
+  "save_cut_meshes": false
+}
+```
+
+- `save_cut_meshes=false` (recommended for large runs): do not persist intermediate cut meshes (`A/B/X/C/D/Z`, cutters, cut steps).
+- `save_cut_meshes=true`: keep all intermediate meshes for visual debugging.
 
 Provided configs:
 - `direct_mesh_booleans.json`
@@ -103,11 +114,7 @@ python benchmark\scripts\run_pipeline.py `
 
 ## Key outputs per case
 
-- `A.obj`, `B.obj` (original inputs)
-- `X.obj` + `X_birth_indices.npy` (closed-input reference and provenance)
-- `cutters\A\sphere_*.obj`, `cutters\B\sphere_*.obj` (all generated cutting spheres)
-- `C.obj`, `D.obj` (broken inputs)
-- `Z.obj` (expected broken-output reference)
-- `Y.obj` (method-under-test output)
 - `case_result.json` (full metadata, cut logs, metrics)
+- Intermediate cut meshes are saved only when `debug.save_cut_meshes=true`.
+- Result meshes are saved in `<method output_path>\meshes\` when `save_output_meshes=true`.
 
