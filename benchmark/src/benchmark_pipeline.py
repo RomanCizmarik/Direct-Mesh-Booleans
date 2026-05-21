@@ -182,7 +182,7 @@ def uv_sphere_mesh(
             faces.append([a, c, b])
             faces.append([b, c, d])
     for j in range(slices):
-        faces.append([ring(stacks - 1, j), ring(stacks - 1, j + 1), bottom])
+        faces.append([ring(stacks - 1, j + 1), ring(stacks - 1, j), bottom])
 
     v = np.asarray(verts, dtype=np.float64)
     f = np.asarray(faces, dtype=np.int64)
