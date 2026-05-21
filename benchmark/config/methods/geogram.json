@@ -1,0 +1,10 @@
+{
+  "exe_path": "C:\\skola\\PhD\\VUT\\booleans_paper\\evaluation\\bin\\Geogram\\boolean_op.exe",
+  "operation_map": {
+    "union": "operation=union",
+    "diff": "operation=difference",
+    "int": "operation=intersection"
+  },
+  "output_path": "geogram",
+  "save_output_meshes": true
+}

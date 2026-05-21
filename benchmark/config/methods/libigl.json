@@ -1,0 +1,10 @@
+{
+  "exe_path": "C:\\skola\\PhD\\VUT\\booleans_paper\\evaluation\\bin\\Libigl\\libigl_test.exe",
+  "operation_map": {
+    "union": "U",
+    "diff": "D",
+    "int": "I"
+  },
+  "output_path": "libigl",
+  "save_output_meshes": true
+}

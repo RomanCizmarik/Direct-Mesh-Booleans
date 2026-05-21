@@ -14,9 +14,5 @@
   "metrics": {
     "sample_count": 8000,
     "boundary_fscore_tol_frac": 0.001
-  },
-  "method_under_test": {
-    "name": "libigl",
-    "external_command_template": ""
   }
 }

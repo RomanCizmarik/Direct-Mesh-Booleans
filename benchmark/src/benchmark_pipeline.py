@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -78,6 +79,8 @@ def load_mesh(mesh_path: Path) -> Tuple[np.ndarray, np.ndarray]:
     v, f = igl.read_triangle_mesh(str(mesh_path))
     v = np.asarray(v, dtype=np.float64)
     f = np.asarray(f, dtype=np.int64)
+    if v.size == 0 and f.size == 0:
+        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.int64)
     if v.ndim != 2 or v.shape[1] != 3 or f.ndim != 2 or f.shape[1] != 3:
         raise ValueError(f"Expected triangle mesh with 3D vertices: {mesh_path}")
     return v, f
@@ -381,9 +384,46 @@ def run_boolean(v_a: np.ndarray, f_a: np.ndarray, v_b: np.ndarray, f_b: np.ndarr
     return np.asarray(v_x, dtype=np.float64), np.asarray(f_x, dtype=np.int64), np.asarray(j_x).reshape(-1).astype(np.int64)
 
 
+def _operation_argument(operation: str, operation_map: Dict[str, str]) -> str:
+    op = _normalize_op(operation)
+    key_candidates = {
+        "union": ["union", "u"],
+        "intersection": ["intersection", "intersect", "int", "i"],
+        "difference": ["difference", "diff", "minus", "m", "d"],
+    }[op]
+    lowered = {str(k).lower(): str(v) for k, v in operation_map.items()}
+    for key in key_candidates:
+        if key in lowered:
+            return lowered[key]
+    raise ValueError(f"operation_map does not define mapping for '{op}'.")
+
+
+def _find_new_mesh_output(
+    working_directory: Path,
+    start_time: float,
+    exclude_files: Sequence[Path],
+) -> Optional[Path]:
+    exclude_resolved = {p.resolve() for p in exclude_files if p.exists()}
+    candidates: List[Tuple[float, Path]] = []
+    for suffix in SUPPORTED_MESH_SUFFIXES:
+        for mesh_path in working_directory.rglob(f"*{suffix}"):
+            try:
+                resolved = mesh_path.resolve()
+                if resolved in exclude_resolved:
+                    continue
+                stat = mesh_path.stat()
+            except OSError:
+                continue
+            if stat.st_mtime >= start_time:
+                candidates.append((stat.st_mtime, mesh_path))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][1]
+
+
 def run_method_under_test(
-    method_name: str,
-    external_template: str,
+    method_cfg: Dict[str, Any],
     operation: str,
     case_dir: Path,
     v_c: np.ndarray,
@@ -393,45 +433,83 @@ def run_method_under_test(
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Dict[str, Any]]:
     op = _normalize_op(operation)
     t0 = time.perf_counter()
+    exe_path = method_cfg.get("exe_path")
+    operation_map = method_cfg.get("operation_map")
+    if not isinstance(exe_path, str) or not exe_path.strip():
+        raise ValueError("Method config must provide non-empty 'exe_path'.")
+    if not isinstance(operation_map, dict):
+        raise ValueError("Method config must provide 'operation_map' dictionary.")
 
-    if method_name == "libigl":
-        v_y, f_y, _ = run_boolean(v_c, f_c, v_d, f_d, op)
-        elapsed = time.perf_counter() - t0
-        return v_y, f_y, {"method": "libigl", "runtime_sec": elapsed, "status": "ok"}
+    in_a = case_dir / "C.obj"
+    in_b = case_dir / "D.obj"
+    out_y = case_dir / "Y.obj"
+    if out_y.exists():
+        out_y.unlink()
+    save_mesh(in_a, v_c, f_c)
+    save_mesh(in_b, v_d, f_d)
 
-    if method_name == "external_command":
-        if not external_template:
-            raise ValueError("external_command template is empty.")
-        in_a = case_dir / "C.obj"
-        in_b = case_dir / "D.obj"
-        out_y = case_dir / "Y.obj"
-        save_mesh(in_a, v_c, f_c)
-        save_mesh(in_b, v_d, f_d)
-        command = external_template.format(
-            op=op,
-            op_token=OP_TOKEN[op],
-            a=str(in_a),
-            b=str(in_b),
-            out=str(out_y),
+    op_arg = _operation_argument(op, operation_map)
+    base_args = [exe_path, op_arg, str(in_a), str(in_b)]
+    args_with_out = [*base_args, str(out_y)]
+    args_without_out = list(base_args)
+    working_directory = case_dir
+    exclude = [
+        in_a,
+        in_b,
+        case_dir / "A.obj",
+        case_dir / "B.obj",
+        case_dir / "X.obj",
+        case_dir / "Z.obj",
+    ]
+    attempts: List[Dict[str, Any]] = []
+
+    def run_attempt(argv: List[str], label: str) -> subprocess.CompletedProcess:
+        start_attempt = time.time()
+        proc = subprocess.run(argv, capture_output=True, text=True, cwd=str(working_directory))
+        attempts.append(
+            {
+                "label": label,
+                "argv": argv,
+                "status_code": proc.returncode,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+            }
         )
-        proc = subprocess.run(command, shell=True, capture_output=True, text=True)
-        elapsed = time.perf_counter() - t0
-        meta = {
-            "method": "external_command",
-            "runtime_sec": elapsed,
-            "status_code": proc.returncode,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
-            "command": command,
-        }
-        if proc.returncode != 0 or not out_y.exists():
-            meta["status"] = "error"
-            return None, None, meta
-        v_y, f_y = load_mesh(out_y)
-        meta["status"] = "ok"
-        return v_y, f_y, meta
+        if not out_y.exists():
+            auto_out = _find_new_mesh_output(working_directory, start_attempt, exclude)
+            if auto_out is not None and auto_out.resolve() != out_y.resolve():
+                shutil.copyfile(auto_out, out_y)
+                attempts[-1]["auto_detected_output"] = str(auto_out)
+        return proc
 
-    raise ValueError(f"Unsupported method_under_test: {method_name}")
+    proc_first = run_attempt(args_with_out, "with_output_arg")
+    if (proc_first.returncode != 0 or not out_y.exists()) and not out_y.exists():
+        _ = run_attempt(args_without_out, "without_output_arg")
+
+    elapsed = time.perf_counter() - t0
+    meta = {
+        "runtime_sec": elapsed,
+        "working_directory": str(working_directory),
+        "attempts": attempts,
+        "command_used": attempts[-1]["argv"] if attempts else None,
+    }
+    if not attempts:
+        meta["status"] = "error"
+        meta["error"] = "No process attempts executed."
+        return None, None, meta
+
+    last = attempts[-1]
+    meta["status_code"] = last["status_code"]
+    if last["status_code"] != 0 or not out_y.exists():
+        meta["status"] = "error"
+        return None, None, meta
+    v_y, f_y = load_mesh(out_y)
+    if not bool(method_cfg.get("allow_empty_output_mesh", False)) and (v_y.shape[0] == 0 or f_y.shape[0] == 0):
+        meta["status"] = "error"
+        meta["error"] = "Method produced an empty output mesh."
+        return None, None, meta
+    meta["status"] = "ok"
+    return v_y, f_y, meta
 
 
 def sample_points_on_mesh(v: np.ndarray, f: np.ndarray, sample_count: int) -> np.ndarray:
@@ -592,8 +670,7 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
 
         method_cfg = config["method_under_test"]
         v_y, f_y, method_meta = run_method_under_test(
-            method_cfg["name"],
-            method_cfg.get("external_command_template", ""),
+            method_cfg,
             meta["operation"],
             case_dir,
             v_c,
@@ -605,6 +682,12 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
 
         if v_y is not None and f_y is not None:
             save_mesh(case_dir / "Y.obj", v_y, f_y)
+            if bool(method_cfg.get("save_output_meshes", False)):
+                mesh_dir = output_root / "meshes"
+                mesh_dir.mkdir(parents=True, exist_ok=True)
+                method_name = str(method_cfg.get("method_name", "method"))
+                mesh_name = f"{case_id}_{meta['operation']}_{method_name}.obj"
+                save_mesh(mesh_dir / mesh_name, v_y, f_y)
             meta["metrics"] = evaluate_metrics(v_y, f_y, v_z, f_z, config["metrics"])
         else:
             meta["status"] = "error"
@@ -725,9 +808,29 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg.setdefault("spheres", {})
     cfg.setdefault("metrics", {})
     cfg.setdefault("method_under_test", {})
-    cfg["method_under_test"].setdefault("name", "libigl")
-    cfg["method_under_test"].setdefault("external_command_template", "")
     return cfg
+
+
+def load_method_configs(methods_dir: Path) -> List[Dict[str, Any]]:
+    method_files = sorted(p for p in methods_dir.glob("*.json") if p.is_file())
+    if not method_files:
+        raise ValueError(f"No method config files found in: {methods_dir}")
+    methods: List[Dict[str, Any]] = []
+    for method_file in method_files:
+        with method_file.open("r", encoding="utf-8") as handle:
+            method_cfg = json.load(handle)
+        if not isinstance(method_cfg, dict):
+            raise ValueError(f"Method config must be a JSON object: {method_file}")
+        if "exe_path" not in method_cfg or "operation_map" not in method_cfg or "output_path" not in method_cfg:
+            raise ValueError(
+                f"Method config missing required fields (exe_path, operation_map, output_path): {method_file}"
+            )
+        if "save_output_meshes" not in method_cfg:
+            method_cfg["save_output_meshes"] = False
+        method_cfg["method_name"] = method_file.stem
+        method_cfg["config_path"] = str(method_file)
+        methods.append(method_cfg)
+    return methods
 
 
 def save_global_outputs(output_root: Path, config: Dict[str, Any], results: Sequence[Dict[str, Any]]) -> None:
