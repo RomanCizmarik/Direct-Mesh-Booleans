@@ -112,6 +112,24 @@ python benchmark\scripts\run_pipeline.py `
   --output-dir C:\path\to\output
 ```
 
+Dataset mode now:
+- computes and caches dataset mesh stats in `<dataset>\mesh_stats.json` and `<dataset>\mesh_stats.csv`
+- samples cases only from meshes with `is_closed=true` and `is_manifold=true`
+- for STL meshes, topology checks use welded vertices (duplicate STL vertices are merged for closed/manifold detection)
+- if fewer valid unique input pairs exist than requested via `--pairs`, it runs all available pairs
+- writes selected pairs to `<method output>\input_mesh_pairs.json/csv`
+
+Use `--update-stats` to force mesh stats recomputation:
+
+```powershell
+python benchmark\scripts\run_pipeline.py `
+  --methods-dir benchmark\config\methods `
+  --dataset-dir C:\path\to\dataset `
+  --pairs 64 `
+  --update-stats `
+  --output-dir C:\path\to\output
+```
+
 ## Key outputs per case
 
 - `case_result.json` (full metadata, cut logs, metrics)

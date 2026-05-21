@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--pairs", type=int, default=None, help="Override number of sampled dataset pairs.")
     parser.add_argument("--seed", type=int, default=None, help="Override global seed.")
+    parser.add_argument(
+        "--update-stats",
+        action="store_true",
+        help="Recompute dataset mesh stats cache (mesh_stats.json/csv) before running.",
+    )
     parser.add_argument("--input-a", type=Path, default=None, help="Manual case: first mesh path.")
     parser.add_argument("--input-b", type=Path, default=None, help="Manual case: second mesh path.")
     parser.add_argument(
@@ -90,6 +95,7 @@ def main() -> int:
     root_out_dir.mkdir(parents=True, exist_ok=True)
 
     per_method_overview = []
+    should_update_stats = bool(args.update_stats)
 
     for method_cfg in methods:
         method_name = str(method_cfg.get("method_name", "method"))
@@ -127,7 +133,13 @@ def main() -> int:
         if args.dataset_dir is None:
             raise ValueError("Dataset mode requires --dataset-dir unless manual inputs are provided.")
 
-        results = run_dataset_benchmark(args.dataset_dir.resolve(), run_cfg, method_output_path)
+        results = run_dataset_benchmark(
+            args.dataset_dir.resolve(),
+            run_cfg,
+            method_output_path,
+            update_stats=should_update_stats,
+        )
+        should_update_stats = False
         save_global_outputs(method_output_path, run_cfg, results)
         failed = sum(1 for r in results if r.get("status") != "ok")
         per_method_overview.append(

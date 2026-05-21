@@ -217,6 +217,105 @@ def index_dataset(dataset_dir: Path) -> List[Dict[str, Any]]:
     return records
 
 
+def _edge_manifold_bool(f: np.ndarray) -> bool:
+    edge_raw = igl.is_edge_manifold(f)
+    if isinstance(edge_raw, tuple):
+        return bool(edge_raw[0])
+    if isinstance(edge_raw, np.ndarray):
+        return bool(np.all(edge_raw))
+    return bool(edge_raw)
+
+
+def _vertex_manifold_bool(f: np.ndarray) -> bool:
+    vertex_raw = igl.is_vertex_manifold(f)
+    if isinstance(vertex_raw, tuple):
+        return bool(np.all(np.asarray(vertex_raw[0])))
+    if isinstance(vertex_raw, np.ndarray):
+        return bool(np.all(vertex_raw))
+    return bool(vertex_raw)
+
+
+def _topology_faces_for_checks(v: np.ndarray, f: np.ndarray, suffix: str) -> Tuple[np.ndarray, bool]:
+    if f.size == 0:
+        return f, False
+    if suffix != ".stl":
+        return f, False
+    bmin, bmax = mesh_bbox(v)
+    diag = float(np.linalg.norm(bmax - bmin))
+    epsilon = max(diag * 1e-12, 1e-15)
+    sv, _, _, sf = igl.remove_duplicate_vertices(v, f, epsilon)
+    sf = np.asarray(sf, dtype=np.int64)
+    if sv.size == 0 or sf.size == 0:
+        return f, False
+    return sf, True
+
+
+def compute_dataset_mesh_stats(dataset_dir: Path) -> List[Dict[str, Any]]:
+    mesh_paths = sorted(
+        p for p in dataset_dir.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_MESH_SUFFIXES
+    )
+    records: List[Dict[str, Any]] = []
+    for idx, mesh_path in enumerate(mesh_paths):
+        size_bytes = int(mesh_path.stat().st_size)
+        record: Dict[str, Any] = {
+            "mesh_id": f"mesh_{idx:05d}",
+            "path": str(mesh_path),
+            "suffix": mesh_path.suffix.lower(),
+            "size_bytes": size_bytes,
+            "size_mb": float(size_bytes / (1024.0 * 1024.0)),
+            "status": "ok",
+            "num_triangles": 0,
+            "is_closed": False,
+            "is_manifold": False,
+            "is_edge_manifold": False,
+            "is_vertex_manifold": False,
+            "topology_faces_source": "raw",
+        }
+        try:
+            v, f = load_mesh(mesh_path)
+            topo_f, welded_for_topology = _topology_faces_for_checks(v, f, mesh_path.suffix.lower())
+            boundary_count = int(boundary_edges(topo_f).shape[0])
+            is_closed = boundary_count == 0
+            is_edge_manifold = _edge_manifold_bool(topo_f)
+            is_vertex_manifold = _vertex_manifold_bool(topo_f)
+            is_manifold = bool(is_edge_manifold and is_vertex_manifold)
+            record.update(mesh_stats(v, f))
+            record["num_triangles"] = int(f.shape[0])
+            record["is_closed"] = bool(is_closed)
+            record["is_manifold"] = bool(is_manifold)
+            record["is_edge_manifold"] = bool(is_edge_manifold)
+            record["is_vertex_manifold"] = bool(is_vertex_manifold)
+            record["topology_faces_source"] = "welded" if welded_for_topology else "raw"
+        except Exception as exc:
+            record["status"] = "error"
+            record["error"] = str(exc)
+        records.append(record)
+    return records
+
+
+def get_dataset_mesh_stats(dataset_dir: Path, update_stats: bool = False) -> List[Dict[str, Any]]:
+    stats_json = dataset_dir / "mesh_stats.json"
+    stats_csv = dataset_dir / "mesh_stats.csv"
+    if stats_json.exists() and not update_stats:
+        with stats_json.open("r", encoding="utf-8") as handle:
+            loaded = json.load(handle)
+        if isinstance(loaded, list):
+            has_required_fields = all(
+                isinstance(rec, dict)
+                and "is_closed" in rec
+                and "is_manifold" in rec
+                and "num_triangles" in rec
+                and "topology_faces_source" in rec
+                for rec in loaded
+            )
+            if has_required_fields:
+                return loaded
+    records = compute_dataset_mesh_stats(dataset_dir)
+    _write_json(stats_json, records)
+    _write_csv(stats_csv, records)
+    return records
+
+
 def sample_random_cases(
     mesh_records: Sequence[Dict[str, Any]],
     num_pairs: int,
@@ -224,22 +323,26 @@ def sample_random_cases(
     seed: int,
 ) -> List[Dict[str, Any]]:
     valid = [r for r in mesh_records if r.get("status") == "ok"]
-    if len(valid) < 2:
-        raise ValueError("Need at least 2 valid meshes to sample pairs.")
     if not operations:
         raise ValueError("At least one operation must be provided.")
+    if len(valid) < 2:
+        return []
 
     rng = np.random.default_rng(seed)
     normalized_ops = [_normalize_op(op) for op in operations]
+    unique_pairs = [(i, j) for i in range(len(valid)) for j in range(i + 1, len(valid))]
+    if not unique_pairs:
+        return []
+    rng.shuffle(unique_pairs)
+    pair_count = min(int(num_pairs), len(unique_pairs))
     cases: List[Dict[str, Any]] = []
-    for i in range(num_pairs):
-        ia, ib = rng.choice(len(valid), size=2, replace=False)
+    for i, (ia, ib) in enumerate(unique_pairs[:pair_count]):
         op = normalized_ops[int(rng.integers(0, len(normalized_ops)))]
         cases.append(
             {
                 "case_id": f"case_{i:05d}",
-                "input_a": valid[int(ia)]["path"],
-                "input_b": valid[int(ib)]["path"],
+                "input_a": valid[ia]["path"],
+                "input_b": valid[ib]["path"],
                 "operation": op,
                 "seed_spheres_a": int(rng.integers(0, 2**31 - 1)),
                 "seed_spheres_b": int(rng.integers(0, 2**31 - 1)),
@@ -772,20 +875,36 @@ def run_dataset_benchmark(
     dataset_dir: Path,
     config: Dict[str, Any],
     output_root: Path,
+    update_stats: bool = False,
 ) -> List[Dict[str, Any]]:
     dataset_manifest_dir = output_root / "manifests"
-    mesh_records = index_dataset(dataset_dir)
+    mesh_records = get_dataset_mesh_stats(dataset_dir, update_stats=update_stats)
     _write_json(dataset_manifest_dir / "mesh_manifest.json", mesh_records)
     _write_csv(dataset_manifest_dir / "mesh_manifest.csv", mesh_records)
 
+    candidate_records = [
+        r
+        for r in mesh_records
+        if r.get("status") == "ok" and bool(r.get("is_closed", False)) and bool(r.get("is_manifold", False))
+    ]
     cases = sample_random_cases(
-        mesh_records,
+        candidate_records,
         int(config["num_pairs"]),
         list(config["operations"]),
         int(config["seed"]),
     )
     _write_json(output_root / "cases_manifest.json", cases)
     _write_csv(output_root / "cases_manifest.csv", cases)
+    input_pairs = [
+        {
+            "case_id": c["case_id"],
+            "input_a": c["input_a"],
+            "input_b": c["input_b"],
+        }
+        for c in cases
+    ]
+    _write_json(output_root / "input_mesh_pairs.json", input_pairs)
+    _write_csv(output_root / "input_mesh_pairs.csv", input_pairs)
 
     results = [run_case(case, config, output_root) for case in cases]
     return results
