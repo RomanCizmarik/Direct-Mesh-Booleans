@@ -2173,7 +2173,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         };
 
     //componnet will be directly modified
-    auto FWNBasedComponentSplit = [&, this](std::vector<tFaceHandle>& component)
+    auto FWNBasedComponentSplit = [&, this](const std::vector<tFaceHandle>& component)
         {
             //TODO: THIS IS HIGHLY UNOPTIMAL!!! Use accessor, that rebuilds FWN only once for the whole run...
             //auto acc = other.getFWN();
@@ -2256,12 +2256,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             };
 
-            //DEBUG
-            //auto debugComponent = component;
+            auto componentCopy = component;
 
+            //DEBUG
             //{
 
-            //    for (auto fh : debugComponent)
+            //    for (auto fh : componentCopy)
             //    {
             //        if (m_mesh.status(fh).deleted())
             //        {
@@ -2293,23 +2293,23 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //    //    }
             //    //}
 
-            //    for (auto vh : m_mesh.vertices())
-            //    {
-            //        m_mesh.set_color(vh, MeshType::Color(255, 255, 0));
+            //    //for (auto vh : m_mesh.vertices())
+            //    //{
+            //    //    m_mesh.set_color(vh, MeshType::Color(255, 255, 0));
 
-            //        if (intersectionVertex[vh] && intersectionValance[vh] == 1)
-            //        {
-            //            m_mesh.set_color(vh, MeshType::Color(255, 0, 0));
-            //        }
-            //    }
+            //    //    if (intersectionVertex[vh] && intersectionValance[vh] == 1)
+            //    //    {
+            //    //        m_mesh.set_color(vh, MeshType::Color(255, 0, 0));
+            //    //    }
+            //    //}
 
             //    {
             //        MeshType meshPart;
-            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
 
             //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
             //        opt += OpenMesh::IO::Options::FaceColor;
-            //        opt += OpenMesh::IO::Options::VertexColor;
+            //        //opt += OpenMesh::IO::Options::VertexColor;
             //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) +  "_before.ply", opt);
             //        //OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_mesh_before.ply", opt);
             //    }
@@ -2854,7 +2854,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                             m_tIdToOriginalTId.push_back(newMAFhId);
 
                             //directly modify the original component
-                            component.push_back(fh);
+                            componentCopy.push_back(fh);
                             newFaces.push_back(fh);
                         }
                     }
@@ -3033,10 +3033,10 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             OpenMesh::EProp<bool> edgeClassifed(false, m_mesh);
             OpenMesh::FProp<bool> faceClassifed(false, m_mesh);
 
-            makeUniqueVector(component);
+            makeUniqueVector(componentCopy);
 
             //reaply original labelings
-            for (auto fh : component)
+            for (auto fh : componentCopy)
             {
                 intersectionFace[fh] = false;
 
@@ -3192,9 +3192,37 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //}
 
 #else
+            std::unordered_set<tFaceHandle> facesToClassify;
+            std::unordered_set<tEdgeHandle> edgesToClassify;
+
+
             for (auto newVh : newVertices)
             {
                 for (auto fh : newVh.faces())
+                {
+                    if (faceClassifed[fh] || intersectionFace[fh])
+                    {
+                        continue;
+                    }
+
+                    for (auto eh : fh.edges())
+                    {
+                        facesToClassify.insert(eh.faces().begin(), eh.faces().end());
+                    }
+                }
+            }
+
+            for (auto fh : facesToClassify)
+            {
+                auto sFh = OpenMesh::make_smart(fh, m_mesh);
+                edgesToClassify.insert(sFh.edges().begin(), sFh.edges().end());
+            }
+
+
+            //for (auto newVh : newVertices)
+            {
+                //for (auto fh : newVh.faces())
+                for (auto fh : facesToClassify)
                 {
                     if (faceClassifed[fh] || intersectionFace[fh])
                     {
@@ -3215,37 +3243,42 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             
 
 
-            for (auto newVh : newVertices)
+            //for (auto newVh : newVertices)
             {
-                for (auto eh : newVh.edges())
+                //for (auto eh : newVh.edges())
+                for (auto eh : edgesToClassify)
                 {
-                    if (edgeClassifed[eh])
+                    auto sEh = OpenMesh::make_smart(eh, m_mesh);
+
+                    if (edgeClassifed[sEh])
                     {
                         continue;
                     }
 
-                    pIntersectionEdge[eh] = false;
+                    pIntersectionEdge[sEh] = false;
 
-                    if (!(eh.h0().face().is_valid() && eh.h1().face().is_valid()))
+                    if (!(sEh.h0().face().is_valid() && sEh.h1().face().is_valid()))
                     {
                         continue;
                     }
 
-                    if (labeling[eh.h0().face()] != labeling[eh.h1().face()]/* || (pNewVh[eh.v0()] && pNewVh[eh.v1()])*/)
+                    if (labeling[sEh.h0().face()] != labeling[sEh.h1().face()]/* || (pNewVh[eh.v0()] && pNewVh[eh.v1()])*/)
                     {
-                        pIntersectionEdge[eh] = true;
-                        intersectionFace[eh.h0().face()] = true;
-                        intersectionFace[eh.h1().face()] = true;
+                        pIntersectionEdge[sEh] = true;
+                        intersectionFace[sEh.h0().face()] = true;
+                        intersectionFace[sEh.h1().face()] = true;
+                        intersectionVertex[sEh.v0()] = true;
+                        intersectionVertex[sEh.v1()] = true;
                     }
 
-                    edgeClassifed[eh] = true;
+                    edgeClassifed[sEh] = true;
 
                 }
             }
 #endif
 
             //debug
-//intersection lines
+            //intersection lines
             //{
             //    std::map<int, int> meshToObjVertexMap;
             //    int objVertexId = 1;
@@ -3280,9 +3313,9 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //    }
             //}
 
-            ////debug
+            //debug
             //{
-            //    for (auto fh : debugComponent)
+            //    for (auto fh : componentCopy)
             //    {
             //        if (m_mesh.status(fh).deleted())
             //        {
@@ -3304,7 +3337,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //TODO: MAKE LAMBDA OUT OF THIS!!!
             //find components
             int cntNewComponents = 0;
-            for (auto fh : component)
+            for (auto fh : componentCopy)
             {
                 if (m_mesh.status(fh).deleted())
                 {
@@ -3378,7 +3411,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     //store this component
                     components.push_back(componentFaces);
 
-                    ////debug
+                    //debug
                     //{
                     //    ++cntNewComponents;
 
@@ -3401,11 +3434,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             //updateMatrices();
 
-            ////DEBUG
+            //DEBUG
             //{
             //    int cc = 0;
 
-            //    for (auto fh : debugComponent)
+            //    for (auto fh : componentCopy)
             //    {
             //        if (m_mesh.status(fh).deleted())
             //        {
@@ -3425,7 +3458,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             //    {
             //        MeshType meshPart;
-            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
             //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
             //        opt += OpenMesh::IO::Options::FaceColor;
 
