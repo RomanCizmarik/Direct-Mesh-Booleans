@@ -713,25 +713,36 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
         v_b, f_b = load_mesh(Path(case["input_b"]))
         debug_cfg = config.get("debug", {})
         save_cut_meshes = bool(debug_cfg.get("save_cut_meshes", False))
-        if save_cut_meshes:
-            save_mesh(case_dir / "A.obj", v_a, f_a)
-            save_mesh(case_dir / "B.obj", v_b, f_b)
+        save_expected_result = bool(debug_cfg.get("save_expected_result", False))
+        debug_requested = bool(save_cut_meshes or save_expected_result)
+        expected_results_dir_raw = debug_cfg.get("expected_results_dir")
+        expected_case_dir = (
+            Path(str(expected_results_dir_raw)) / case_id
+            if expected_results_dir_raw
+            else case_dir
+        )
+        shared_expected_results = bool(expected_results_dir_raw)
+        expected_marker_path = expected_case_dir / "_expected_ready.flag"
+        write_debug_outputs = debug_requested and (not shared_expected_results or not expected_marker_path.exists())
+        if write_debug_outputs:
+            expected_case_dir.mkdir(parents=True, exist_ok=True)
+
+        if save_cut_meshes and write_debug_outputs:
+            save_mesh(expected_case_dir / "A.obj", v_a, f_a)
+            save_mesh(expected_case_dir / "B.obj", v_b, f_b)
 
         v_x, f_x, j_x = run_boolean(v_a, f_a, v_b, f_b, meta["operation"])
-        if save_cut_meshes:
-            save_mesh(case_dir / "X.obj", v_x, f_x)
-            np.save(case_dir / "X_birth_indices.npy", j_x)
         source_tag = (j_x >= f_a.shape[0]).astype(np.int64)  # 0=A, 1=B
 
         sphere_cfg = config["spheres"]
         spheres_a = sample_cut_spheres(v_a, f_a, sphere_cfg, int(case["seed_spheres_a"]))
         spheres_b = sample_cut_spheres(v_b, f_b, sphere_cfg, int(case["seed_spheres_b"]))
 
-        if save_cut_meshes:
+        if save_cut_meshes and write_debug_outputs:
             for s in spheres_a:
-                save_mesh(case_dir / "cutters" / "A" / f"sphere_{s['sphere_id']:02d}.obj", s["v"], s["f"])
+                save_mesh(expected_case_dir / "cutters" / "A" / f"sphere_{s['sphere_id']:02d}.obj", s["v"], s["f"])
             for s in spheres_b:
-                save_mesh(case_dir / "cutters" / "B" / f"sphere_{s['sphere_id']:02d}.obj", s["v"], s["f"])
+                save_mesh(expected_case_dir / "cutters" / "B" / f"sphere_{s['sphere_id']:02d}.obj", s["v"], s["f"])
 
         prov_a = np.arange(f_a.shape[0], dtype=np.int64)
         v_c, f_c, _, cuts_a = apply_sphere_cuts(
@@ -740,7 +751,7 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
             prov_a,
             spheres_a,
             target_tag=None,
-            save_steps_dir=(case_dir / "C_cut_steps") if save_cut_meshes else None,
+            save_steps_dir=(expected_case_dir / "C_cut_steps") if (save_cut_meshes and write_debug_outputs) else None,
         )
 
         prov_b = np.arange(f_b.shape[0], dtype=np.int64)
@@ -750,7 +761,7 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
             prov_b,
             spheres_b,
             target_tag=None,
-            save_steps_dir=(case_dir / "D_cut_steps") if save_cut_meshes else None,
+            save_steps_dir=(expected_case_dir / "D_cut_steps") if (save_cut_meshes and write_debug_outputs) else None,
         )
 
         v_z_a, f_z_a, tag_after_a, z_a_stats = apply_sphere_cuts(
@@ -759,7 +770,7 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
             source_tag,
             spheres_a,
             target_tag=0,
-            save_steps_dir=(case_dir / "Z_cut_A_steps") if save_cut_meshes else None,
+            save_steps_dir=(expected_case_dir / "Z_cut_A_steps") if (save_cut_meshes and write_debug_outputs) else None,
         )
         v_z, f_z, tag_final, z_b_stats = apply_sphere_cuts(
             v_z_a,
@@ -767,16 +778,22 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
             tag_after_a,
             spheres_b,
             target_tag=1,
-            save_steps_dir=(case_dir / "Z_cut_B_steps") if save_cut_meshes else None,
+            save_steps_dir=(expected_case_dir / "Z_cut_B_steps") if (save_cut_meshes and write_debug_outputs) else None,
         )
         _ = tag_final
-        if save_cut_meshes:
-            save_mesh(case_dir / "C.obj", v_c, f_c)
-            save_mesh(case_dir / "D.obj", v_d, f_d)
-            save_mesh(case_dir / "Z.obj", v_z, f_z)
+        if save_cut_meshes and write_debug_outputs:
+            save_mesh(expected_case_dir / "C.obj", v_c, f_c)
+            save_mesh(expected_case_dir / "D.obj", v_d, f_d)
+        if save_expected_result and write_debug_outputs:
+            save_mesh(expected_case_dir / "Z.obj", v_z, f_z)
+        if write_debug_outputs and save_cut_meshes:
+            save_mesh(expected_case_dir / "X.obj", v_x, f_x)
+            np.save(expected_case_dir / "X_birth_indices.npy", j_x)
+        if write_debug_outputs and shared_expected_results:
+            expected_marker_path.write_text("ok\n", encoding="utf-8")
 
         method_cfg = config["method_under_test"]
-        method_io_dir = case_dir if save_cut_meshes else (case_dir / "_method_io")
+        method_io_dir = case_dir / "_method_io"
         method_io_dir.mkdir(parents=True, exist_ok=True)
         method_input_a = method_io_dir / "C.obj"
         method_input_b = method_io_dir / "D.obj"
@@ -809,15 +826,14 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
         if not save_cut_meshes and method_output_y.exists():
             method_output_y.unlink()
 
-        if not save_cut_meshes:
-            for p in [method_input_a, method_input_b]:
-                if p.exists():
-                    p.unlink()
-            if method_io_dir.exists():
-                try:
-                    method_io_dir.rmdir()
-                except OSError:
-                    pass
+        for p in [method_input_a, method_input_b]:
+            if p.exists():
+                p.unlink()
+        if method_io_dir.exists():
+            try:
+                method_io_dir.rmdir()
+            except OSError:
+                pass
 
         meta["spheres_a"] = [
             {"sphere_id": int(s["sphere_id"]), "center": s["center"].tolist(), "radius": float(s["radius"])}
@@ -841,6 +857,8 @@ def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) ->
             "D": mesh_stats(v_d, f_d),
             "Z": mesh_stats(v_z, f_z),
         }
+        if debug_requested:
+            meta["expected_results_dir"] = str(expected_case_dir)
     except Exception as exc:
         meta["status"] = "error"
         meta["error"] = str(exc)
@@ -951,6 +969,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg.setdefault("metrics", {})
     cfg.setdefault("debug", {})
     cfg["debug"].setdefault("save_cut_meshes", False)
+    cfg["debug"].setdefault("save_expected_result", False)
     cfg.setdefault("method_under_test", {})
     return cfg
 

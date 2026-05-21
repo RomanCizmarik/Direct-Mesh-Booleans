@@ -93,6 +93,7 @@ def main() -> int:
 
     root_out_dir = args.output_dir.resolve()
     root_out_dir.mkdir(parents=True, exist_ok=True)
+    expected_results_dir = root_out_dir / "expected_results"
 
     per_method_overview = []
     should_update_stats = bool(args.update_stats)
@@ -106,6 +107,8 @@ def main() -> int:
 
         run_cfg = copy.deepcopy(config)
         run_cfg["method_under_test"] = method_cfg
+        run_cfg.setdefault("debug", {})
+        run_cfg["debug"]["expected_results_dir"] = str(expected_results_dir)
 
         if args.input_a is not None or args.input_b is not None:
             if args.input_a is None or args.input_b is None:

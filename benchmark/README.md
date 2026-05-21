@@ -62,12 +62,15 @@ Config template:
 
 ```json
 "debug": {
-  "save_cut_meshes": false
+  "save_cut_meshes": false,
+  "save_expected_result": false
 }
 ```
 
 - `save_cut_meshes=false` (recommended for large runs): do not persist intermediate cut meshes (`A/B/X/C/D/Z`, cutters, cut steps).
 - `save_cut_meshes=true`: keep all intermediate meshes for visual debugging.
+- `save_expected_result=true`: save expected output mesh `Z.obj` per case even when `save_cut_meshes=false`.
+- Expected/debug meshes are written once per case into `<output-dir>\expected_results\case_xxxxx\` and reused across methods.
 
 Provided configs:
 - `direct_mesh_booleans.json`

@@ -16,6 +16,7 @@
     "boundary_fscore_tol_frac": 0.001
   },
   "debug": {
-    "save_cut_meshes": false
+    "save_cut_meshes": false,
+    "save_expected_result": true
   }
 }
