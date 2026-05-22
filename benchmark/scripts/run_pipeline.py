@@ -20,6 +20,7 @@ from benchmark_pipeline import (  # noqa: E402
     run_manual_case,
     save_global_outputs,
 )
+from plots import generate_standard_plots  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +65,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-a", type=Path, default=None, help="Manual case: first mesh path.")
     parser.add_argument("--input-b", type=Path, default=None, help="Manual case: second mesh path.")
     parser.add_argument(
+        "--plots-only",
+        action="store_true",
+        help="Generate plots only from --output-dir using existing results (no benchmark execution).",
+    )
+    parser.add_argument(
         "--op",
         type=str,
         default="union",
@@ -76,6 +82,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     config = load_config(args.config)
+    root_out_dir = args.output_dir.resolve()
+    root_out_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plots_only:
+        plots_cfg = copy.deepcopy(config.get("plots", {}))
+        plots_cfg["enabled"] = True
+        plot_summary = generate_standard_plots(root_out_dir, plots_cfg)
+        print(json.dumps({"plots": plot_summary}, indent=2))
+        return 0
 
     if args.pairs is not None:
         config["num_pairs"] = int(args.pairs)
@@ -91,8 +106,6 @@ def main() -> int:
     else:
         methods = load_method_configs(args.methods_dir.resolve())
 
-    root_out_dir = args.output_dir.resolve()
-    root_out_dir.mkdir(parents=True, exist_ok=True)
     expected_results_dir = root_out_dir / "expected_results"
 
     per_method_overview = []
@@ -157,11 +170,16 @@ def main() -> int:
     summary_path = root_out_dir / "methods_run_summary.json"
     with summary_path.open("w", encoding="utf-8") as handle:
         json.dump(per_method_overview, handle, indent=2)
+
+    plots_summary = None
+    if bool(config.get("plots", {}).get("enabled", False)):
+        plots_summary = generate_standard_plots(root_out_dir, config.get("plots", {}))
     print(json.dumps(per_method_overview, indent=2))
+    if plots_summary is not None:
+        print(json.dumps({"plots": plots_summary}, indent=2))
     has_failures = any(item.get("status") == "error" or item.get("failed", 0) > 0 for item in per_method_overview)
     return 2 if has_failures else 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

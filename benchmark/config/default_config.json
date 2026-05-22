@@ -18,5 +18,11 @@
   "debug": {
     "save_cut_meshes": false,
     "save_expected_result": true
+  },
+  "plots": {
+    "enabled": false,
+    "output_subdir": "plots",
+    "dpi": 150,
+    "formats": ["png"]
   }
 }

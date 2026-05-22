@@ -20,6 +20,11 @@ except ImportError as exc:
         "Python package 'libigl' is required. Install dependencies from benchmark/requirements.txt."
     ) from exc
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 
 SUPPORTED_MESH_SUFFIXES = {".obj", ".off", ".stl", ".ply"}
 OP_MAP = {
@@ -564,9 +569,43 @@ def run_method_under_test(
     ]
     attempts: List[Dict[str, Any]] = []
 
+    def _run_process_with_peak_memory(argv: List[str]) -> Tuple[subprocess.CompletedProcess, Optional[float], float]:
+        start = time.perf_counter()
+        if psutil is None:
+            proc = subprocess.run(argv, capture_output=True, text=True, cwd=str(working_directory))
+            elapsed_local = float(time.perf_counter() - start)
+            return proc, None, elapsed_local
+
+        popen = subprocess.Popen(
+            argv,
+            cwd=str(working_directory),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        peak_rss_bytes = 0
+        ps_proc = psutil.Process(popen.pid)
+        while popen.poll() is None:
+            try:
+                rss = ps_proc.memory_info().rss
+                for child in ps_proc.children(recursive=True):
+                    try:
+                        rss += child.memory_info().rss
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+                peak_rss_bytes = max(peak_rss_bytes, int(rss))
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+            time.sleep(0.05)
+        stdout, stderr = popen.communicate()
+        elapsed_local = float(time.perf_counter() - start)
+        peak_rss_mb = (float(peak_rss_bytes) / (1024.0 * 1024.0)) if peak_rss_bytes > 0 else None
+        completed = subprocess.CompletedProcess(argv, popen.returncode, stdout, stderr)
+        return completed, peak_rss_mb, elapsed_local
+
     def run_attempt(argv: List[str], label: str) -> subprocess.CompletedProcess:
         start_attempt = time.time()
-        proc = subprocess.run(argv, capture_output=True, text=True, cwd=str(working_directory))
+        proc, peak_rss_mb, attempt_runtime = _run_process_with_peak_memory(argv)
         attempts.append(
             {
                 "label": label,
@@ -574,6 +613,8 @@ def run_method_under_test(
                 "status_code": proc.returncode,
                 "stdout": proc.stdout,
                 "stderr": proc.stderr,
+                "runtime_sec": float(attempt_runtime),
+                "peak_rss_mb": peak_rss_mb,
             }
         )
         if not out_y.exists():
@@ -593,6 +634,7 @@ def run_method_under_test(
         "working_directory": str(working_directory),
         "attempts": attempts,
         "command_used": attempts[-1]["argv"] if attempts else None,
+        "peak_rss_mb": max((a.get("peak_rss_mb") for a in attempts if a.get("peak_rss_mb") is not None), default=None),
     }
     if not attempts:
         meta["status"] = "error"
@@ -968,8 +1010,13 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg.setdefault("spheres", {})
     cfg.setdefault("metrics", {})
     cfg.setdefault("debug", {})
+    cfg.setdefault("plots", {})
     cfg["debug"].setdefault("save_cut_meshes", False)
     cfg["debug"].setdefault("save_expected_result", False)
+    cfg["plots"].setdefault("enabled", False)
+    cfg["plots"].setdefault("output_subdir", "plots")
+    cfg["plots"].setdefault("dpi", 150)
+    cfg["plots"].setdefault("formats", ["png"])
     cfg.setdefault("method_under_test", {})
     return cfg
 
@@ -1002,4 +1049,3 @@ def save_global_outputs(output_root: Path, config: Dict[str, Any], results: Sequ
     _write_csv(output_root / "results_cases.csv", list(results))
     summary = summarize_results(results)
     _write_json(output_root / "results_summary.json", summary)
-

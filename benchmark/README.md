@@ -115,6 +115,36 @@ python benchmark\scripts\run_pipeline.py `
   --output-dir C:\path\to\output
 ```
 
+## Plot generation
+
+`default_config.json` now supports:
+
+```json
+"plots": {
+  "enabled": false,
+  "output_subdir": "plots",
+  "dpi": 150,
+  "formats": ["png"]
+}
+```
+
+When `plots.enabled=true`, the run automatically creates:
+- `hausdorff_by_method`
+- `chamfer_by_method`
+- `runtime_complexity` (runtime vs input triangles)
+- `memory_complexity` (peak RSS vs input triangles)
+
+Plot-only mode (no benchmark execution):
+
+```powershell
+python benchmark\scripts\run_pipeline.py `
+  --config benchmark\config\default_config.json `
+  --output-dir C:\path\to\existing_run `
+  --plots-only
+```
+
+This reads existing method outputs from `--output-dir` and writes plots into `<output-dir>\plots\`.
+
 Dataset mode now:
 - computes and caches dataset mesh stats in `<dataset>\mesh_stats.json` and `<dataset>\mesh_stats.csv`
 - samples cases only from meshes with `is_closed=true` and `is_manifold=true`
@@ -138,4 +168,4 @@ python benchmark\scripts\run_pipeline.py `
 - `case_result.json` (full metadata, cut logs, metrics)
 - Intermediate cut meshes are saved only when `debug.save_cut_meshes=true`.
 - Result meshes are saved in `<method output_path>\meshes\` when `save_output_meshes=true`.
-
+- Method execution metadata includes `runtime_sec` and `peak_rss_mb` (peak resident memory), used by complexity plots.
