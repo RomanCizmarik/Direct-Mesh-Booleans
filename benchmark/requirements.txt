@@ -3,4 +3,4 @@ numpy>=1.24
 scipy>=1.10
 psutil>=5.9
 plotly>=5.22
-kaleido==0.2.1
+kaleido==0.1.0post1

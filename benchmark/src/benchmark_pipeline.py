@@ -1026,7 +1026,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg["plots"].setdefault("dpi", 150)
     cfg["plots"].setdefault("formats", ["pdf"])
     cfg["plots"].setdefault("complexity_bins", 80)
-    cfg["plots"].setdefault("export_timeout_sec", 5.0)
+    cfg["plots"].setdefault("export_timeout_sec", 30.0)
     cfg["plots"].setdefault("fallback_html_on_export_failure", True)
     cfg.setdefault("method_under_test", {})
     return cfg

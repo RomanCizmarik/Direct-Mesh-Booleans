@@ -126,7 +126,7 @@ python benchmark\scripts\run_pipeline.py `
   "dpi": 150,
   "formats": ["pdf"],
   "complexity_bins": 80,
-  "export_timeout_sec": 5.0,
+  "export_timeout_sec": 30.0,
   "fallback_html_on_export_failure": true
 }
 ```
