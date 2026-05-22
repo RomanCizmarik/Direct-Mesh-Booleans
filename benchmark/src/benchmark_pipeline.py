@@ -5,6 +5,8 @@ import json
 import math
 import shutil
 import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -531,6 +533,119 @@ def _find_new_mesh_output(
     return candidates[0][1]
 
 
+def _terminate_process_tree(pid: int) -> None:
+    if psutil is None:
+        return
+    try:
+        root_proc = psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return
+    try:
+        children = root_proc.children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        children = []
+    for child in children:
+        try:
+            child.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    try:
+        root_proc.terminate()
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+    alive: List[Any] = []
+    try:
+        _, alive = psutil.wait_procs(children + [root_proc], timeout=2.0)
+    except Exception:
+        alive = []
+    for proc in alive:
+        try:
+            proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+
+def _run_subprocess_with_limits(
+    argv: Sequence[str],
+    cwd: Path,
+    timeout_limit_sec: float,
+    memory_limit_mb: float,
+    check_interval_sec: float,
+) -> Tuple[subprocess.CompletedProcess, Optional[float], float, Optional[str]]:
+    start = time.perf_counter()
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout_file, tempfile.TemporaryFile(
+        mode="w+", encoding="utf-8"
+    ) as stderr_file:
+        popen = subprocess.Popen(
+            list(argv),
+            cwd=str(cwd),
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+        )
+
+        peak_rss_bytes = 0
+        terminated_reason: Optional[str] = None
+        ps_proc = psutil.Process(popen.pid) if psutil is not None else None
+
+        if ps_proc is not None:
+            try:
+                peak_rss_bytes = int(ps_proc.memory_info().rss)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                peak_rss_bytes = 0
+
+        while popen.poll() is None:
+            elapsed = time.perf_counter() - start
+            if timeout_limit_sec > 0 and elapsed > timeout_limit_sec:
+                terminated_reason = "timeout_limit_exceeded"
+                try:
+                    popen.terminate()
+                except OSError:
+                    pass
+                _terminate_process_tree(popen.pid)
+                break
+            if ps_proc is not None:
+                try:
+                    rss = int(ps_proc.memory_info().rss)
+                    peak_rss_bytes = max(peak_rss_bytes, rss)
+                    if memory_limit_mb > 0 and (rss / (1024.0 * 1024.0)) > memory_limit_mb:
+                        terminated_reason = "memory_limit_exceeded"
+                        try:
+                            popen.terminate()
+                        except OSError:
+                            pass
+                        _terminate_process_tree(popen.pid)
+                        break
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            time.sleep(check_interval_sec if check_interval_sec > 0 else MEMORY_CHECK_INTERVAL_SEC)
+
+        if popen.poll() is None:
+            try:
+                popen.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    popen.kill()
+                except OSError:
+                    pass
+                try:
+                    popen.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+
+        stdout_file.flush()
+        stderr_file.flush()
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        stdout = stdout_file.read()
+        stderr = stderr_file.read()
+
+    elapsed_local = float(time.perf_counter() - start)
+    peak_rss_mb = (float(peak_rss_bytes) / (1024.0 * 1024.0)) if peak_rss_bytes > 0 else None
+    completed = subprocess.CompletedProcess(list(argv), popen.returncode, stdout, stderr)
+    return completed, peak_rss_mb, elapsed_local, terminated_reason
+
+
 def run_method_under_test(
     method_cfg: Dict[str, Any],
     operation: str,
@@ -538,6 +653,7 @@ def run_method_under_test(
     input_a_path: Path,
     input_b_path: Path,
     output_path: Path,
+    limits_cfg: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Dict[str, Any]]:
     op = _normalize_op(operation)
     t0 = time.perf_counter()
@@ -575,43 +691,20 @@ def run_method_under_test(
         case_dir / "Z.obj",
     ]
     attempts: List[Dict[str, Any]] = []
-
-    def _run_process_with_peak_memory(argv: List[str]) -> Tuple[subprocess.CompletedProcess, Optional[float], float]:
-        start = time.perf_counter()
-        if psutil is None:
-            proc = subprocess.run(argv, capture_output=True, text=True, cwd=str(working_directory))
-            elapsed_local = float(time.perf_counter() - start)
-            return proc, None, elapsed_local
-
-        popen = subprocess.Popen(
-            argv,
-            cwd=str(working_directory),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        peak_rss_bytes = 0
-        ps_proc = psutil.Process(popen.pid)
-        try:
-            peak_rss_bytes = int(ps_proc.memory_info().rss)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            peak_rss_bytes = 0
-        while popen.poll() is None:
-            try:
-                rss = int(ps_proc.memory_info().rss)
-                peak_rss_bytes = max(peak_rss_bytes, rss)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-            time.sleep(MEMORY_CHECK_INTERVAL_SEC)
-        stdout, stderr = popen.communicate()
-        elapsed_local = float(time.perf_counter() - start)
-        peak_rss_mb = (float(peak_rss_bytes) / (1024.0 * 1024.0)) if peak_rss_bytes > 0 else None
-        completed = subprocess.CompletedProcess(argv, popen.returncode, stdout, stderr)
-        return completed, peak_rss_mb, elapsed_local
+    limits_cfg = limits_cfg or {}
+    timeout_limit_sec = float(limits_cfg.get("method_timeout_sec", 0.0))
+    memory_limit_mb = float(limits_cfg.get("method_memory_limit_mb", 0.0))
+    check_interval = float(limits_cfg.get("memory_check_interval_sec", MEMORY_CHECK_INTERVAL_SEC))
 
     def run_attempt(argv: List[str], label: str) -> subprocess.CompletedProcess:
         start_attempt = time.time()
-        proc, peak_rss_mb, attempt_runtime = _run_process_with_peak_memory(argv)
+        proc, peak_rss_mb, attempt_runtime, terminated_reason = _run_subprocess_with_limits(
+            argv=argv,
+            cwd=working_directory,
+            timeout_limit_sec=timeout_limit_sec,
+            memory_limit_mb=memory_limit_mb,
+            check_interval_sec=check_interval,
+        )
         attempts.append(
             {
                 "label": label,
@@ -621,6 +714,7 @@ def run_method_under_test(
                 "stderr": proc.stderr,
                 "runtime_sec": float(attempt_runtime),
                 "peak_rss_mb": peak_rss_mb,
+                "terminated_reason": terminated_reason,
             }
         )
         if not out_y.exists():
@@ -643,6 +737,8 @@ def run_method_under_test(
         "peak_rss_mb": max((a.get("peak_rss_mb") for a in attempts if a.get("peak_rss_mb") is not None), default=None),
         "input_size_bytes": int(input_size_bytes),
         "input_size_mb": float(input_size_bytes / (1024.0 * 1024.0)),
+        "method_timeout_sec": timeout_limit_sec if timeout_limit_sec > 0 else None,
+        "method_memory_limit_mb": memory_limit_mb if memory_limit_mb > 0 else None,
     }
     if not attempts:
         meta["status"] = "error"
@@ -650,9 +746,14 @@ def run_method_under_test(
         return None, None, meta
 
     last = attempts[-1]
+    terminated_reason = last.get("terminated_reason")
     meta["status_code"] = last["status_code"]
-    if last["status_code"] != 0 or not out_y.exists():
+    if last.get("terminated_reason"):
+        meta["terminated_reason"] = last.get("terminated_reason")
+    if meta["status_code"] != 0 or not out_y.exists():
         meta["status"] = "error"
+        if last.get("terminated_reason"):
+            meta["error"] = str(last.get("terminated_reason"))
         return None, None, meta
     v_y, f_y = load_mesh(out_y)
     if not bool(method_cfg.get("allow_empty_output_mesh", False)) and (v_y.shape[0] == 0 or f_y.shape[0] == 0):
@@ -746,10 +847,11 @@ def evaluate_metrics(
     }
 
 
-def prepare_case_data(case: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+def prepare_case_data(case: Dict[str, Any], config: Dict[str, Any], prep_dir: Path) -> Dict[str, Any]:
     case_id = str(case["case_id"])
     prepared: Dict[str, Any] = {"case_id": case_id, "status": "ok"}
     try:
+        prep_dir.mkdir(parents=True, exist_ok=True)
         v_a, f_a = load_mesh(Path(case["input_a"]))
         v_b, f_b = load_mesh(Path(case["input_b"]))
         operation = _normalize_op(str(case["operation"]))
@@ -826,14 +928,18 @@ def prepare_case_data(case: Dict[str, Any], config: Dict[str, Any]) -> Dict[str,
         if save_expected_result and expected_case_dir is not None:
             save_mesh(expected_case_dir / "Z.obj", v_z, f_z)
 
+        c_path = prep_dir / "C.obj"
+        d_path = prep_dir / "D.obj"
+        z_path = prep_dir / "Z.obj"
+        save_mesh(c_path, v_c, f_c)
+        save_mesh(d_path, v_d, f_d)
+        save_mesh(z_path, v_z, f_z)
+
         prepared.update(
             {
-                "v_c": v_c,
-                "f_c": f_c,
-                "v_d": v_d,
-                "f_d": f_d,
-                "v_z": v_z,
-                "f_z": f_z,
+                "c_path": str(c_path),
+                "d_path": str(d_path),
+                "z_path": str(z_path),
                 "spheres_a": [
                     {"sphere_id": int(s["sphere_id"]), "center": s["center"].tolist(), "radius": float(s["radius"])}
                     for s in spheres_a
@@ -866,6 +972,102 @@ def prepare_case_data(case: Dict[str, Any], config: Dict[str, Any]) -> Dict[str,
     return prepared
 
 
+def prepare_case_data_with_limits(case: Dict[str, Any], config: Dict[str, Any], prep_dir: Path) -> Dict[str, Any]:
+    limits_cfg = config.get("limits", {})
+    timeout_limit_sec = float(limits_cfg.get("preparation_timeout_sec", 0.0))
+    memory_limit_mb = float(limits_cfg.get("preparation_memory_limit_mb", 0.0))
+    check_interval = float(limits_cfg.get("memory_check_interval_sec", MEMORY_CHECK_INTERVAL_SEC))
+    if timeout_limit_sec <= 0 and memory_limit_mb <= 0:
+        prepared = prepare_case_data(case, config, prep_dir)
+        prepared["preparation_peak_rss_mb"] = None
+        return prepared
+
+    prep_dir.mkdir(parents=True, exist_ok=True)
+    case_json = prep_dir / "_prep_case.json"
+    cfg_json = prep_dir / "_prep_config.json"
+    out_json = prep_dir / "_prep_result.json"
+    _write_json(case_json, case)
+    _write_json(cfg_json, config)
+
+    worker_script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_case_worker.py"
+    argv = [
+        sys.executable,
+        str(worker_script),
+        "--case-json",
+        str(case_json),
+        "--config-json",
+        str(cfg_json),
+        "--prep-dir",
+        str(prep_dir),
+        "--out-json",
+        str(out_json),
+    ]
+    completed, peak_rss_mb, _, terminated_reason = _run_subprocess_with_limits(
+        argv=argv,
+        cwd=worker_script.parent,
+        timeout_limit_sec=timeout_limit_sec,
+        memory_limit_mb=memory_limit_mb,
+        check_interval_sec=check_interval,
+    )
+    if terminated_reason is not None:
+        return {
+            "case_id": str(case.get("case_id", "unknown")),
+            "status": "error",
+            "error": f"preparation {terminated_reason}",
+            "preparation_peak_rss_mb": peak_rss_mb if peak_rss_mb is not None else None,
+            "preparation_status_code": int(completed.returncode),
+            "preparation_stdout": completed.stdout,
+            "preparation_stderr": completed.stderr,
+            "preparation_terminated_reason": terminated_reason,
+        }
+    if completed.returncode != 0:
+        return {
+            "case_id": str(case.get("case_id", "unknown")),
+            "status": "error",
+            "error": f"preparation process failed with status code {completed.returncode}",
+            "preparation_peak_rss_mb": peak_rss_mb if peak_rss_mb is not None else None,
+            "preparation_status_code": int(completed.returncode),
+            "preparation_stdout": completed.stdout,
+            "preparation_stderr": completed.stderr,
+        }
+    if not out_json.exists():
+        return {
+            "case_id": str(case.get("case_id", "unknown")),
+            "status": "error",
+            "error": "preparation result file not created",
+            "preparation_peak_rss_mb": peak_rss_mb if peak_rss_mb is not None else None,
+            "preparation_status_code": int(completed.returncode),
+            "preparation_stdout": completed.stdout,
+            "preparation_stderr": completed.stderr,
+        }
+    try:
+        with out_json.open("r", encoding="utf-8") as handle:
+            prepared = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "case_id": str(case.get("case_id", "unknown")),
+            "status": "error",
+            "error": f"invalid preparation result payload: {exc}",
+            "preparation_peak_rss_mb": peak_rss_mb if peak_rss_mb is not None else None,
+            "preparation_status_code": int(completed.returncode),
+            "preparation_stdout": completed.stdout,
+            "preparation_stderr": completed.stderr,
+        }
+    if isinstance(prepared, dict):
+        prepared["preparation_peak_rss_mb"] = peak_rss_mb if peak_rss_mb is not None else None
+        prepared["preparation_status_code"] = int(completed.returncode)
+        return prepared
+    return {
+        "case_id": str(case.get("case_id", "unknown")),
+        "status": "error",
+        "error": "invalid preparation result payload",
+        "preparation_peak_rss_mb": peak_rss_mb if peak_rss_mb is not None else None,
+        "preparation_status_code": int(completed.returncode),
+        "preparation_stdout": completed.stdout,
+        "preparation_stderr": completed.stderr,
+    }
+
+
 def run_case_with_prepared(
     case: Dict[str, Any],
     config: Dict[str, Any],
@@ -885,25 +1087,26 @@ def run_case_with_prepared(
     if prepared.get("status") != "ok":
         meta["status"] = "error"
         meta["error"] = f"case preparation failed: {prepared.get('error', 'unknown error')}"
+        if prepared.get("preparation_status_code") is not None:
+            meta["preparation_status_code"] = prepared.get("preparation_status_code")
+        if prepared.get("preparation_peak_rss_mb") is not None:
+            meta["preparation_peak_rss_mb"] = prepared.get("preparation_peak_rss_mb")
         _write_json(case_dir / "case_result.json", meta)
         return meta
 
     try:
-        v_c = np.asarray(prepared["v_c"], dtype=np.float64)
-        f_c = np.asarray(prepared["f_c"], dtype=np.int64)
-        v_d = np.asarray(prepared["v_d"], dtype=np.float64)
-        f_d = np.asarray(prepared["f_d"], dtype=np.int64)
-        v_z = np.asarray(prepared["v_z"], dtype=np.float64)
-        f_z = np.asarray(prepared["f_z"], dtype=np.int64)
+        c_path = Path(str(prepared["c_path"]))
+        d_path = Path(str(prepared["d_path"]))
+        v_z, f_z = (
+            (np.asarray(prepared["v_z"], dtype=np.float64), np.asarray(prepared["f_z"], dtype=np.int64))
+            if "v_z" in prepared and "f_z" in prepared
+            else load_mesh(Path(str(prepared["z_path"])))
+        )
 
         method_cfg = config["method_under_test"]
-        method_io_dir = case_dir / "_method_io"
-        method_io_dir.mkdir(parents=True, exist_ok=True)
-        method_input_a = method_io_dir / "C.obj"
-        method_input_b = method_io_dir / "D.obj"
+        method_input_a = c_path
+        method_input_b = d_path
         method_output_y = case_dir / "Y.obj"
-        save_mesh(method_input_a, v_c, f_c)
-        save_mesh(method_input_b, v_d, f_d)
         v_y, f_y, method_meta = run_method_under_test(
             method_cfg,
             meta["operation"],
@@ -911,6 +1114,7 @@ def run_case_with_prepared(
             method_input_a,
             method_input_b,
             method_output_y,
+            limits_cfg=config.get("limits", {}),
         )
         meta["method"] = method_meta
 
@@ -930,19 +1134,13 @@ def run_case_with_prepared(
         if not bool(config.get("debug", {}).get("save_cut_meshes", False)) and method_output_y.exists():
             method_output_y.unlink()
 
-        for p in [method_input_a, method_input_b]:
-            if p.exists():
-                p.unlink()
-        if method_io_dir.exists():
-            try:
-                method_io_dir.rmdir()
-            except OSError:
-                pass
-
         meta["spheres_a"] = prepared.get("spheres_a", [])
         meta["spheres_b"] = prepared.get("spheres_b", [])
         meta["cut_stats"] = prepared.get("cut_stats", {})
         meta["mesh_stats"] = prepared.get("mesh_stats", {})
+        meta["preparation_peak_rss_mb"] = prepared.get("preparation_peak_rss_mb")
+        if prepared.get("preparation_status_code") is not None:
+            meta["preparation_status_code"] = prepared.get("preparation_status_code")
         if "expected_results_dir" in prepared:
             meta["expected_results_dir"] = prepared["expected_results_dir"]
     except Exception as exc:
@@ -954,7 +1152,12 @@ def run_case_with_prepared(
 
 
 def run_case(case: Dict[str, Any], config: Dict[str, Any], output_root: Path) -> Dict[str, Any]:
-    prepared = prepare_case_data(case, config)
+    prep_dir = output_root / "_prepared" / str(case["case_id"])
+    prepared = prepare_case_data_with_limits(case, config, prep_dir)
+    if prepared.get("status") == "ok":
+        v_z, f_z = load_mesh(Path(str(prepared["z_path"])))
+        prepared["v_z"] = v_z
+        prepared["f_z"] = f_z
     return run_case_with_prepared(case, config, output_root, prepared)
 
 
@@ -1060,6 +1263,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg.setdefault("metrics", {})
     cfg.setdefault("debug", {})
     cfg.setdefault("plots", {})
+    cfg.setdefault("limits", {})
     cfg["debug"].setdefault("save_cut_meshes", False)
     cfg["debug"].setdefault("save_expected_result", False)
     cfg["plots"].setdefault("enabled", False)
@@ -1069,6 +1273,11 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg["plots"].setdefault("complexity_bins", 80)
     cfg["plots"].setdefault("export_timeout_sec", 30.0)
     cfg["plots"].setdefault("fallback_html_on_export_failure", True)
+    cfg["limits"].setdefault("preparation_timeout_sec", 7200)
+    cfg["limits"].setdefault("preparation_memory_limit_mb", 32768)
+    cfg["limits"].setdefault("method_timeout_sec", 7200)
+    cfg["limits"].setdefault("method_memory_limit_mb", 32768)
+    cfg["limits"].setdefault("memory_check_interval_sec", 0.01)
     cfg.setdefault("method_under_test", {})
     return cfg
 

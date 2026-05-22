@@ -15,9 +15,16 @@
     "sample_count": 8000,
     "boundary_fscore_tol_frac": 0.001
   },
+  "limits": {
+    "preparation_timeout_sec": 1200,
+    "preparation_memory_limit_mb": 16384,
+    "method_timeout_sec": 1200,
+    "method_memory_limit_mb": 16384,
+    "memory_check_interval_sec": 0.01
+  },
   "debug": {
-    "save_cut_meshes": true,
-    "save_expected_result": true
+    "save_cut_meshes": false,
+    "save_expected_result": false
   },
   "plots": {
     "enabled": true,

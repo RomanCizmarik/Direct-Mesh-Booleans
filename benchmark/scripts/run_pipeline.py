@@ -4,6 +4,7 @@ import argparse
 import copy
 import csv
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -19,8 +20,9 @@ from benchmark_pipeline import (  # noqa: E402
     _normalize_op,
     get_dataset_mesh_stats,
     load_config,
+    load_mesh,
     load_method_configs,
-    prepare_case_data,
+    prepare_case_data_with_limits,
     run_case_with_prepared,
     save_global_outputs,
     sample_random_cases,
@@ -218,11 +220,21 @@ def main() -> int:
     else:
         prep_cfg["debug"].pop("expected_results_dir", None)
 
+    prep_root_dir = root_out_dir / "_prepared_cases"
     for case in cases:
-        prepared = prepare_case_data(case, prep_cfg)
+        prep_case_dir = prep_root_dir / str(case["case_id"])
+        if prep_case_dir.exists():
+            shutil.rmtree(prep_case_dir, ignore_errors=True)
+        prepared = prepare_case_data_with_limits(case, prep_cfg, prep_case_dir)
+        if prepared.get("status") == "ok":
+            v_z, f_z = load_mesh(Path(str(prepared["z_path"])))
+            prepared["v_z"] = v_z
+            prepared["f_z"] = f_z
         for run in method_runs:
             result = run_case_with_prepared(case, run["run_cfg"], run["output_path"], prepared)
             run["results"].append(result)
+        if prep_case_dir.exists():
+            shutil.rmtree(prep_case_dir, ignore_errors=True)
 
     per_method_overview = []
     for run in method_runs:

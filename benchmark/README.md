@@ -71,7 +71,27 @@ Config template:
 - `save_cut_meshes=true`: keep all intermediate meshes for visual debugging.
 - `save_expected_result=true`: save expected output mesh `Z.obj` per case even when `save_cut_meshes=false`.
 - Expected/debug meshes are optionally written once per case into `<output-dir>\expected_results\case_xxxxx\` (only when corresponding debug flags are enabled).
-- In multi-method runs, expensive preparation (`X`, `C`, `D`, `Z`) is computed once per case in memory and reused for all methods.
+- In multi-method runs, expensive preparation (`X`, `C`, `D`, `Z`) is computed once per case and reused for all methods.
+
+## Time and memory limits
+
+`default_config.json` contains execution limits for both case preparation and tested methods:
+
+```json
+"limits": {
+  "preparation_timeout_sec": 7200,
+  "preparation_memory_limit_mb": 32768,
+  "method_timeout_sec": 7200,
+  "method_memory_limit_mb": 32768,
+  "memory_check_interval_sec": 0.01
+}
+```
+
+- `preparation_timeout_sec`: max time for case preparation (`X/C/D/Z` construction).
+- `preparation_memory_limit_mb`: max RSS memory for preparation worker process.
+- `method_timeout_sec`: max time per method execution.
+- `method_memory_limit_mb`: max RSS memory per method process.
+- `memory_check_interval_sec`: process polling interval (same style as your `BooleansTest.py` monitor loop).
 
 Provided configs:
 - `direct_mesh_booleans.json`
