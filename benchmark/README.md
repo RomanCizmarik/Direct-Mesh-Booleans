@@ -124,15 +124,21 @@ python benchmark\scripts\run_pipeline.py `
   "enabled": false,
   "output_subdir": "plots",
   "dpi": 150,
-  "formats": ["png"]
+  "formats": ["pdf"],
+  "complexity_bins": 80,
+  "export_timeout_sec": 5.0,
+  "fallback_html_on_export_failure": true
 }
 ```
 
 When `plots.enabled=true`, the run automatically creates:
 - `hausdorff_by_method`
 - `chamfer_by_method`
-- `runtime_complexity` (runtime vs input triangles)
-- `memory_complexity` (peak RSS vs input triangles)
+- `runtime_vs_input_size` (elapsed time vs combined input size in MB)
+- `memory_vs_input_size` (peak memory vs combined input size in MB)
+
+Plot implementation is based on **Plotly** (matching the style used in `EvaluationScripts\scatter_plots.py` and `success_graph.py`).
+If static export stalls/fails in your environment, the pipeline times out static image export and writes `.html` plot files as fallback.
 
 Plot-only mode (no benchmark execution):
 
@@ -168,4 +174,4 @@ python benchmark\scripts\run_pipeline.py `
 - `case_result.json` (full metadata, cut logs, metrics)
 - Intermediate cut meshes are saved only when `debug.save_cut_meshes=true`.
 - Result meshes are saved in `<method output_path>\meshes\` when `save_output_meshes=true`.
-- Method execution metadata includes `runtime_sec` and `peak_rss_mb` (peak resident memory), used by complexity plots.
+- Method execution metadata includes `runtime_sec`, `peak_rss_mb`, and combined input size (`input_size_mb`) computed from method inputs (`C + D`) in MB, used by complexity plots.

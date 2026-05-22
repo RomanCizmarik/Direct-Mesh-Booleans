@@ -27,6 +27,7 @@ except ImportError:
 
 
 SUPPORTED_MESH_SUFFIXES = {".obj", ".off", ".stl", ".ply"}
+MEMORY_CHECK_INTERVAL_SEC = 0.01
 OP_MAP = {
     "union": "union",
     "u": "union",
@@ -552,6 +553,12 @@ def run_method_under_test(
     out_y = output_path
     if out_y.exists():
         out_y.unlink()
+    input_size_bytes = 0
+    for p in (in_a, in_b):
+        try:
+            input_size_bytes += int(p.stat().st_size)
+        except OSError:
+            continue
 
     op_arg = _operation_argument(op, operation_map)
     base_args = [exe_path, op_arg, str(in_a), str(in_b)]
@@ -585,18 +592,17 @@ def run_method_under_test(
         )
         peak_rss_bytes = 0
         ps_proc = psutil.Process(popen.pid)
+        try:
+            peak_rss_bytes = int(ps_proc.memory_info().rss)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            peak_rss_bytes = 0
         while popen.poll() is None:
             try:
-                rss = ps_proc.memory_info().rss
-                for child in ps_proc.children(recursive=True):
-                    try:
-                        rss += child.memory_info().rss
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-                peak_rss_bytes = max(peak_rss_bytes, int(rss))
+                rss = int(ps_proc.memory_info().rss)
+                peak_rss_bytes = max(peak_rss_bytes, rss)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-            time.sleep(0.05)
+            time.sleep(MEMORY_CHECK_INTERVAL_SEC)
         stdout, stderr = popen.communicate()
         elapsed_local = float(time.perf_counter() - start)
         peak_rss_mb = (float(peak_rss_bytes) / (1024.0 * 1024.0)) if peak_rss_bytes > 0 else None
@@ -635,6 +641,8 @@ def run_method_under_test(
         "attempts": attempts,
         "command_used": attempts[-1]["argv"] if attempts else None,
         "peak_rss_mb": max((a.get("peak_rss_mb") for a in attempts if a.get("peak_rss_mb") is not None), default=None),
+        "input_size_bytes": int(input_size_bytes),
+        "input_size_mb": float(input_size_bytes / (1024.0 * 1024.0)),
     }
     if not attempts:
         meta["status"] = "error"
@@ -1016,7 +1024,10 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg["plots"].setdefault("enabled", False)
     cfg["plots"].setdefault("output_subdir", "plots")
     cfg["plots"].setdefault("dpi", 150)
-    cfg["plots"].setdefault("formats", ["png"])
+    cfg["plots"].setdefault("formats", ["pdf"])
+    cfg["plots"].setdefault("complexity_bins", 80)
+    cfg["plots"].setdefault("export_timeout_sec", 5.0)
+    cfg["plots"].setdefault("fallback_html_on_export_failure", True)
     cfg.setdefault("method_under_test", {})
     return cfg
 

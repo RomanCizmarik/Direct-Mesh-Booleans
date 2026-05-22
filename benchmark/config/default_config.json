@@ -23,6 +23,9 @@
     "enabled": false,
     "output_subdir": "plots",
     "dpi": 150,
-    "formats": ["png"]
+    "formats": ["pdf"],
+    "complexity_bins": 80,
+    "export_timeout_sec": 5.0,
+    "fallback_html_on_export_failure": true
   }
 }

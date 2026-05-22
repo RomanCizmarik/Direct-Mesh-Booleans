@@ -1,5 +1,6 @@
 libigl>=2.6.1
 numpy>=1.24
 scipy>=1.10
-matplotlib>=3.7
 psutil>=5.9
+plotly>=5.22
+kaleido==0.2.1
