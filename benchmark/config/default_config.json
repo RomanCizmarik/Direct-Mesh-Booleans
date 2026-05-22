@@ -4,9 +4,9 @@
   "operations": ["union", "intersection", "difference"],
   "spheres": {
     "count_min": 1,
-    "count_max": 2,
+    "count_max": 10,
     "radius_min_frac": 0.02,
-    "radius_max_frac": 0.06,
+    "radius_max_frac": 0.08,
     "center_mode": "surface",
     "stacks": 14,
     "slices": 28
@@ -16,11 +16,11 @@
     "boundary_fscore_tol_frac": 0.001
   },
   "debug": {
-    "save_cut_meshes": false,
+    "save_cut_meshes": true,
     "save_expected_result": true
   },
   "plots": {
-    "enabled": false,
+    "enabled": true,
     "output_subdir": "plots",
     "dpi": 150,
     "formats": ["pdf"],

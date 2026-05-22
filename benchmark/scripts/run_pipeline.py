@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import copy
+import csv
 import json
 import sys
 from pathlib import Path
+
+import numpy as np
 
 
 REPO_BENCHMARK_DIR = Path(__file__).resolve().parents[1]
@@ -14,13 +17,35 @@ if str(SRC_DIR) not in sys.path:
 
 from benchmark_pipeline import (  # noqa: E402
     _normalize_op,
+    get_dataset_mesh_stats,
     load_config,
     load_method_configs,
-    run_dataset_benchmark,
-    run_manual_case,
+    prepare_case_data,
+    run_case_with_prepared,
     save_global_outputs,
+    sample_random_cases,
 )
 from plots import generate_standard_plots  # noqa: E402
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+
+
+def _write_csv(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            handle.write("")
+        return
+    headers = sorted({k for row in rows for k in row.keys()})
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=headers)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
 
 
 def parse_args() -> argparse.Namespace:
@@ -107,10 +132,10 @@ def main() -> int:
         methods = load_method_configs(args.methods_dir.resolve())
 
     expected_results_dir = root_out_dir / "expected_results"
+    global_debug_cfg = config.get("debug", {})
+    debug_requested = bool(global_debug_cfg.get("save_cut_meshes", False) or global_debug_cfg.get("save_expected_result", False))
 
-    per_method_overview = []
-    should_update_stats = bool(args.update_stats)
-
+    method_runs: list[dict] = []
     for method_cfg in methods:
         method_name = str(method_cfg.get("method_name", "method"))
         method_output_path = Path(str(method_cfg["output_path"]))
@@ -121,41 +146,94 @@ def main() -> int:
         run_cfg = copy.deepcopy(config)
         run_cfg["method_under_test"] = method_cfg
         run_cfg.setdefault("debug", {})
-        run_cfg["debug"]["expected_results_dir"] = str(expected_results_dir)
+        if debug_requested:
+            run_cfg["debug"]["expected_results_dir"] = str(expected_results_dir)
+        else:
+            run_cfg["debug"].pop("expected_results_dir", None)
 
-        if args.input_a is not None or args.input_b is not None:
-            if args.input_a is None or args.input_b is None:
-                raise ValueError("Both --input-a and --input-b must be provided for manual case mode.")
-            operation = _normalize_op(args.op)
-            result = run_manual_case(
-                input_a=args.input_a.resolve(),
-                input_b=args.input_b.resolve(),
-                operation=operation,
-                case_name=args.case_name,
-                config=run_cfg,
-                output_root=method_output_path,
-            )
-            save_global_outputs(method_output_path, run_cfg, [result])
-            per_method_overview.append(
-                {
-                    "method": method_name,
-                    "status": result.get("status"),
-                    "case_id": result.get("case_id"),
-                    "output_dir": str(method_output_path),
-                }
-            )
-            continue
+        method_runs.append(
+            {
+                "method_name": method_name,
+                "method_cfg": method_cfg,
+                "output_path": method_output_path,
+                "run_cfg": run_cfg,
+                "results": [],
+            }
+        )
 
+    if args.input_a is not None or args.input_b is not None:
+        if args.input_a is None or args.input_b is None:
+            raise ValueError("Both --input-a and --input-b must be provided for manual case mode.")
+        seed = int(config["seed"])
+        rng = np.random.default_rng(seed)
+        operation = _normalize_op(args.op)
+        cases = [
+            {
+                "case_id": args.case_name,
+                "input_a": str(args.input_a.resolve()),
+                "input_b": str(args.input_b.resolve()),
+                "operation": operation,
+                "seed_spheres_a": int(rng.integers(0, 2**31 - 1)),
+                "seed_spheres_b": int(rng.integers(0, 2**31 - 1)),
+            }
+        ]
+    else:
         if args.dataset_dir is None:
             raise ValueError("Dataset mode requires --dataset-dir unless manual inputs are provided.")
-
-        results = run_dataset_benchmark(
-            args.dataset_dir.resolve(),
-            run_cfg,
-            method_output_path,
-            update_stats=should_update_stats,
+        dataset_dir = args.dataset_dir.resolve()
+        mesh_records = get_dataset_mesh_stats(dataset_dir, update_stats=bool(args.update_stats))
+        dataset_manifest_dir = root_out_dir / "manifests"
+        _write_json(dataset_manifest_dir / "mesh_manifest.json", mesh_records)
+        _write_csv(dataset_manifest_dir / "mesh_manifest.csv", mesh_records)
+        candidate_records = [
+            r
+            for r in mesh_records
+            if r.get("status") == "ok" and bool(r.get("is_closed", False)) and bool(r.get("is_manifold", False))
+        ]
+        cases = sample_random_cases(
+            candidate_records,
+            int(config["num_pairs"]),
+            list(config["operations"]),
+            int(config["seed"]),
         )
-        should_update_stats = False
+
+    input_pairs = [
+        {
+            "case_id": c["case_id"],
+            "input_a": c["input_a"],
+            "input_b": c["input_b"],
+        }
+        for c in cases
+    ]
+
+    _write_json(root_out_dir / "cases_manifest.json", cases)
+    _write_csv(root_out_dir / "cases_manifest.csv", cases)
+    _write_json(root_out_dir / "input_mesh_pairs.json", input_pairs)
+    _write_csv(root_out_dir / "input_mesh_pairs.csv", input_pairs)
+
+    prep_cfg = copy.deepcopy(config)
+    prep_cfg.setdefault("debug", {})
+    if debug_requested:
+        prep_cfg["debug"]["expected_results_dir"] = str(expected_results_dir)
+    else:
+        prep_cfg["debug"].pop("expected_results_dir", None)
+
+    for case in cases:
+        prepared = prepare_case_data(case, prep_cfg)
+        for run in method_runs:
+            result = run_case_with_prepared(case, run["run_cfg"], run["output_path"], prepared)
+            run["results"].append(result)
+
+    per_method_overview = []
+    for run in method_runs:
+        method_name = str(run["method_name"])
+        method_output_path = Path(run["output_path"])
+        run_cfg = run["run_cfg"]
+        results = run["results"]
+        _write_json(method_output_path / "cases_manifest.json", cases)
+        _write_csv(method_output_path / "cases_manifest.csv", cases)
+        _write_json(method_output_path / "input_mesh_pairs.json", input_pairs)
+        _write_csv(method_output_path / "input_mesh_pairs.csv", input_pairs)
         save_global_outputs(method_output_path, run_cfg, results)
         failed = sum(1 for r in results if r.get("status") != "ok")
         per_method_overview.append(
