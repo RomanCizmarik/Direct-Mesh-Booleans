@@ -225,80 +225,24 @@ def index_dataset(dataset_dir: Path) -> List[Dict[str, Any]]:
     return records
 
 
-def _edge_manifold_bool(f: np.ndarray) -> bool:
-    edge_raw = igl.is_edge_manifold(f)
-    if isinstance(edge_raw, tuple):
-        return bool(edge_raw[0])
-    if isinstance(edge_raw, np.ndarray):
-        return bool(np.all(edge_raw))
-    return bool(edge_raw)
-
-
-def _vertex_manifold_bool(f: np.ndarray) -> bool:
-    vertex_raw = igl.is_vertex_manifold(f)
-    if isinstance(vertex_raw, tuple):
-        return bool(np.all(np.asarray(vertex_raw[0])))
-    if isinstance(vertex_raw, np.ndarray):
-        return bool(np.all(vertex_raw))
-    return bool(vertex_raw)
-
-
-def _topology_faces_for_checks(v: np.ndarray, f: np.ndarray, suffix: str) -> Tuple[np.ndarray, bool]:
-    if f.size == 0:
-        return f, False
-    if suffix != ".stl":
-        return f, False
-    bmin, bmax = mesh_bbox(v)
-    diag = float(np.linalg.norm(bmax - bmin))
-    epsilon = max(diag * 1e-12, 1e-15)
-    sv, _, _, sf = igl.remove_duplicate_vertices(v, f, epsilon)
-    sf = np.asarray(sf, dtype=np.int64)
-    if sv.size == 0 or sf.size == 0:
-        return f, False
-    return sf, True
-
-
-def compute_dataset_mesh_stats(dataset_dir: Path) -> List[Dict[str, Any]]:
-    mesh_paths = sorted(
-        p for p in dataset_dir.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_MESH_SUFFIXES
-    )
-    records: List[Dict[str, Any]] = []
-    for idx, mesh_path in enumerate(mesh_paths):
-        size_bytes = int(mesh_path.stat().st_size)
-        record: Dict[str, Any] = {
-            "mesh_id": f"mesh_{idx:05d}",
-            "path": str(mesh_path),
-            "suffix": mesh_path.suffix.lower(),
-            "size_bytes": size_bytes,
-            "size_mb": float(size_bytes / (1024.0 * 1024.0)),
-            "status": "ok",
-            "num_triangles": 0,
-            "is_closed": False,
-            "is_manifold": False,
-            "is_edge_manifold": False,
-            "is_vertex_manifold": False,
-            "topology_faces_source": "raw",
-        }
-        try:
-            v, f = load_mesh(mesh_path)
-            topo_f, welded_for_topology = _topology_faces_for_checks(v, f, mesh_path.suffix.lower())
-            boundary_count = int(boundary_edges(topo_f).shape[0])
-            is_closed = boundary_count == 0
-            is_edge_manifold = _edge_manifold_bool(topo_f)
-            is_vertex_manifold = _vertex_manifold_bool(topo_f)
-            is_manifold = bool(is_edge_manifold and is_vertex_manifold)
-            record.update(mesh_stats(v, f))
-            record["num_triangles"] = int(f.shape[0])
-            record["is_closed"] = bool(is_closed)
-            record["is_manifold"] = bool(is_manifold)
-            record["is_edge_manifold"] = bool(is_edge_manifold)
-            record["is_vertex_manifold"] = bool(is_vertex_manifold)
-            record["topology_faces_source"] = "welded" if welded_for_topology else "raw"
-        except Exception as exc:
-            record["status"] = "error"
-            record["error"] = str(exc)
-        records.append(record)
-    return records
+def _run_mesh_stats_script(dataset_dir: Path, stats_json: Path, stats_csv: Path) -> None:
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "compute_mesh_stats.py"
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--dataset-dir",
+        str(dataset_dir),
+        "--json-path",
+        str(stats_json),
+        "--csv-path",
+        str(stats_csv),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        details = stderr if stderr else stdout
+        raise RuntimeError(f"Mesh stats script failed with status code {proc.returncode}. {details}")
 
 
 def get_dataset_mesh_stats(dataset_dir: Path, update_stats: bool = False) -> List[Dict[str, Any]]:
@@ -313,15 +257,16 @@ def get_dataset_mesh_stats(dataset_dir: Path, update_stats: bool = False) -> Lis
                 and "is_closed" in rec
                 and "is_manifold" in rec
                 and "num_triangles" in rec
-                and "topology_faces_source" in rec
                 for rec in loaded
             )
             if has_required_fields:
                 return loaded
-    records = compute_dataset_mesh_stats(dataset_dir)
-    _write_json(stats_json, records)
-    _write_csv(stats_csv, records)
-    return records
+    _run_mesh_stats_script(dataset_dir, stats_json, stats_csv)
+    with stats_json.open("r", encoding="utf-8") as handle:
+        loaded = json.load(handle)
+    if not isinstance(loaded, list):
+        raise RuntimeError("Invalid mesh stats output format: expected a list.")
+    return loaded
 
 
 def sample_random_cases(

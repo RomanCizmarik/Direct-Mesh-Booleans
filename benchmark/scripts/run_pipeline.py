@@ -97,6 +97,11 @@ def parse_args() -> argparse.Namespace:
         help="Generate plots only from --output-dir using existing results (no benchmark execution).",
     )
     parser.add_argument(
+        "--stats-only",
+        action="store_true",
+        help="Run only dataset mesh stats stage and write mesh_stats.json/csv.",
+    )
+    parser.add_argument(
         "--op",
         type=str,
         default="union",
@@ -117,6 +122,23 @@ def main() -> int:
         plots_cfg["enabled"] = True
         plot_summary = generate_standard_plots(root_out_dir, plots_cfg)
         print(json.dumps({"plots": plot_summary}, indent=2))
+        return 0
+    if args.stats_only:
+        if args.dataset_dir is None:
+            raise ValueError("--stats-only requires --dataset-dir.")
+        dataset_dir = args.dataset_dir.resolve()
+        mesh_records = get_dataset_mesh_stats(dataset_dir, update_stats=True)
+        print(
+            json.dumps(
+                {
+                    "dataset_dir": str(dataset_dir),
+                    "mesh_count": len(mesh_records),
+                    "mesh_stats_json": str(dataset_dir / "mesh_stats.json"),
+                    "mesh_stats_csv": str(dataset_dir / "mesh_stats.csv"),
+                },
+                indent=2,
+            )
+        )
         return 0
 
     if args.pairs is not None:

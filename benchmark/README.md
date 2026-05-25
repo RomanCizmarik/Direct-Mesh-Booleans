@@ -172,10 +172,37 @@ python benchmark\scripts\run_pipeline.py `
 
 This reads existing method outputs from `--output-dir` and writes plots into `<output-dir>\plots\`.
 
+## Mesh stats stage only
+
+You can run only dataset stats (no pair sampling, no boolean methods):
+
+```powershell
+python benchmark\scripts\run_pipeline.py `
+  --config benchmark\config\default_config.json `
+  --dataset-dir C:\path\to\dataset `
+  --stats-only
+```
+
+Stats are computed by the dedicated script `benchmark\scripts\compute_mesh_stats.py` using **trimesh** and written to:
+- `<dataset>\mesh_stats.json`
+- `<dataset>\mesh_stats.csv`
+
+For side-by-side library evaluation, use:
+
+```powershell
+python benchmark\scripts\compute_mesh_stats_trimesh.py --dataset-dir C:\path\to\dataset
+python benchmark\scripts\compute_mesh_stats_libigl.py --dataset-dir C:\path\to\dataset
+python benchmark\scripts\compute_mesh_stats_pymeshlab.py --dataset-dir C:\path\to\dataset
+```
+
+These scripts write:
+- `mesh_stats_trimesh.json/csv`
+- `mesh_stats_libigl.json/csv`
+- `mesh_stats_pymeshlab.json/csv`
+
 Dataset mode now:
 - computes and caches dataset mesh stats in `<dataset>\mesh_stats.json` and `<dataset>\mesh_stats.csv`
 - samples cases only from meshes with `is_closed=true` and `is_manifold=true`
-- for STL meshes, topology checks use welded vertices (duplicate STL vertices are merged for closed/manifold detection)
 - if fewer valid unique input pairs exist than requested via `--pairs`, it runs all available pairs
 - writes selected pairs to `<method output>\input_mesh_pairs.json/csv`
 
