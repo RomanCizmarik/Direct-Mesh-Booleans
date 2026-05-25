@@ -25,7 +25,6 @@ from benchmark_pipeline import (  # noqa: E402
     prepare_case_data_with_limits,
     run_case_with_prepared,
     save_global_outputs,
-    sample_random_cases,
 )
 from plots import generate_standard_plots  # noqa: E402
 
@@ -185,22 +184,31 @@ def main() -> int:
             }
         )
 
-    if args.input_a is not None or args.input_b is not None:
+    manual_mode = args.input_a is not None or args.input_b is not None
+    manual_cases: list[dict] = []
+    candidate_records: list[dict] = []
+    target_case_count = 0
+    dataset_pair_indices: list[tuple[int, int]] = []
+    dataset_rng = np.random.default_rng(int(config["seed"]))
+    normalized_ops = [_normalize_op(op) for op in list(config["operations"])]
+    if not normalized_ops:
+        raise ValueError("At least one operation must be provided.")
+
+    if manual_mode:
         if args.input_a is None or args.input_b is None:
             raise ValueError("Both --input-a and --input-b must be provided for manual case mode.")
-        seed = int(config["seed"])
-        rng = np.random.default_rng(seed)
         operation = _normalize_op(args.op)
-        cases = [
+        manual_cases = [
             {
                 "case_id": args.case_name,
                 "input_a": str(args.input_a.resolve()),
                 "input_b": str(args.input_b.resolve()),
                 "operation": operation,
-                "seed_spheres_a": int(rng.integers(0, 2**31 - 1)),
-                "seed_spheres_b": int(rng.integers(0, 2**31 - 1)),
+                "seed_spheres_a": int(dataset_rng.integers(0, 2**31 - 1)),
+                "seed_spheres_b": int(dataset_rng.integers(0, 2**31 - 1)),
             }
         ]
+        target_case_count = len(manual_cases)
     else:
         if args.dataset_dir is None:
             raise ValueError("Dataset mode requires --dataset-dir unless manual inputs are provided.")
@@ -214,26 +222,9 @@ def main() -> int:
             for r in mesh_records
             if r.get("status") == "ok" and bool(r.get("is_closed", False)) and bool(r.get("is_manifold", False))
         ]
-        cases = sample_random_cases(
-            candidate_records,
-            int(config["num_pairs"]),
-            list(config["operations"]),
-            int(config["seed"]),
-        )
-
-    input_pairs = [
-        {
-            "case_id": c["case_id"],
-            "input_a": c["input_a"],
-            "input_b": c["input_b"],
-        }
-        for c in cases
-    ]
-
-    _write_json(root_out_dir / "cases_manifest.json", cases)
-    _write_csv(root_out_dir / "cases_manifest.csv", cases)
-    _write_json(root_out_dir / "input_mesh_pairs.json", input_pairs)
-    _write_csv(root_out_dir / "input_mesh_pairs.csv", input_pairs)
+        dataset_pair_indices = [(i, j) for i in range(len(candidate_records)) for j in range(i + 1, len(candidate_records))]
+        dataset_rng.shuffle(dataset_pair_indices)
+        target_case_count = min(int(config["num_pairs"]), len(dataset_pair_indices))
 
     prep_cfg = copy.deepcopy(config)
     prep_cfg.setdefault("debug", {})
@@ -243,20 +234,86 @@ def main() -> int:
         prep_cfg["debug"].pop("expected_results_dir", None)
 
     prep_root_dir = root_out_dir / "_prepared_cases"
-    for case in cases:
-        prep_case_dir = prep_root_dir / str(case["case_id"])
-        if prep_case_dir.exists():
-            shutil.rmtree(prep_case_dir, ignore_errors=True)
-        prepared = prepare_case_data_with_limits(case, prep_cfg, prep_case_dir)
-        if prepared.get("status") == "ok":
-            v_z, f_z = load_mesh(Path(str(prepared["z_path"])))
-            prepared["v_z"] = v_z
-            prepared["f_z"] = f_z
-        for run in method_runs:
-            result = run_case_with_prepared(case, run["run_cfg"], run["output_path"], prepared)
-            run["results"].append(result)
-        if prep_case_dir.exists():
-            shutil.rmtree(prep_case_dir, ignore_errors=True)
+    cases: list[dict] = []
+    input_pairs: list[dict] = []
+
+    if manual_mode:
+        for case in manual_cases:
+            prep_case_dir = prep_root_dir / str(case["case_id"])
+            if prep_case_dir.exists():
+                shutil.rmtree(prep_case_dir, ignore_errors=True)
+            prepared = prepare_case_data_with_limits(case, prep_cfg, prep_case_dir)
+            if prepared.get("status") == "ok":
+                v_z, f_z = load_mesh(Path(str(prepared["z_path"])))
+                prepared["v_z"] = v_z
+                prepared["f_z"] = f_z
+            for run in method_runs:
+                result = run_case_with_prepared(case, run["run_cfg"], run["output_path"], prepared)
+                run["results"].append(result)
+            if prep_case_dir.exists():
+                shutil.rmtree(prep_case_dir, ignore_errors=True)
+            cases.append(case)
+            input_pairs.append(
+                {
+                    "case_id": case["case_id"],
+                    "input_a": case["input_a"],
+                    "input_b": case["input_b"],
+                }
+            )
+    else:
+        pair_cursor = 0
+        while len(cases) < target_case_count and pair_cursor < len(dataset_pair_indices):
+            ia, ib = dataset_pair_indices[pair_cursor]
+            pair_cursor += 1
+            case = {
+                "case_id": f"case_{len(cases):05d}",
+                "input_a": candidate_records[ia]["path"],
+                "input_b": candidate_records[ib]["path"],
+                "operation": normalized_ops[int(dataset_rng.integers(0, len(normalized_ops)))],
+                "seed_spheres_a": int(dataset_rng.integers(0, 2**31 - 1)),
+                "seed_spheres_b": int(dataset_rng.integers(0, 2**31 - 1)),
+            }
+
+            prep_case_dir = prep_root_dir / str(case["case_id"])
+            if prep_case_dir.exists():
+                shutil.rmtree(prep_case_dir, ignore_errors=True)
+            prepared = prepare_case_data_with_limits(case, prep_cfg, prep_case_dir)
+
+            valid_expected = False
+            if prepared.get("status") == "ok":
+                try:
+                    v_z, f_z = load_mesh(Path(str(prepared["z_path"])))
+                    if v_z.shape[0] > 0 and f_z.shape[0] > 0:
+                        prepared["v_z"] = v_z
+                        prepared["f_z"] = f_z
+                        valid_expected = True
+                except Exception:
+                    valid_expected = False
+
+            if not valid_expected:
+                if prep_case_dir.exists():
+                    shutil.rmtree(prep_case_dir, ignore_errors=True)
+                continue
+
+            for run in method_runs:
+                result = run_case_with_prepared(case, run["run_cfg"], run["output_path"], prepared)
+                run["results"].append(result)
+            if prep_case_dir.exists():
+                shutil.rmtree(prep_case_dir, ignore_errors=True)
+
+            cases.append(case)
+            input_pairs.append(
+                {
+                    "case_id": case["case_id"],
+                    "input_a": case["input_a"],
+                    "input_b": case["input_b"],
+                }
+            )
+
+    _write_json(root_out_dir / "cases_manifest.json", cases)
+    _write_csv(root_out_dir / "cases_manifest.csv", cases)
+    _write_json(root_out_dir / "input_mesh_pairs.json", input_pairs)
+    _write_csv(root_out_dir / "input_mesh_pairs.csv", input_pairs)
 
     per_method_overview = []
     for run in method_runs:

@@ -190,6 +190,7 @@ Stats are computed by the dedicated script `benchmark\scripts\compute_mesh_stats
 Dataset mode now:
 - computes and caches dataset mesh stats in `<dataset>\mesh_stats.json` and `<dataset>\mesh_stats.csv`
 - samples cases only from meshes with `is_closed=true` and `is_manifold=true`
+- discards sampled cases when preparation fails or expected result `Z` is empty, then samples replacement pairs until requested case count is reached (or candidate pairs are exhausted)
 - if fewer valid unique input pairs exist than requested via `--pairs`, it runs all available pairs
 - writes selected pairs to `<method output>\input_mesh_pairs.json/csv`
 
