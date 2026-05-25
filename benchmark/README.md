@@ -187,19 +187,6 @@ Stats are computed by the dedicated script `benchmark\scripts\compute_mesh_stats
 - `<dataset>\mesh_stats.json`
 - `<dataset>\mesh_stats.csv`
 
-For side-by-side library evaluation, use:
-
-```powershell
-python benchmark\scripts\compute_mesh_stats_trimesh.py --dataset-dir C:\path\to\dataset
-python benchmark\scripts\compute_mesh_stats_libigl.py --dataset-dir C:\path\to\dataset
-python benchmark\scripts\compute_mesh_stats_pymeshlab.py --dataset-dir C:\path\to\dataset
-```
-
-These scripts write:
-- `mesh_stats_trimesh.json/csv`
-- `mesh_stats_libigl.json/csv`
-- `mesh_stats_pymeshlab.json/csv`
-
 Dataset mode now:
 - computes and caches dataset mesh stats in `<dataset>\mesh_stats.json` and `<dataset>\mesh_stats.csv`
 - samples cases only from meshes with `is_closed=true` and `is_manifold=true`
