@@ -41,8 +41,12 @@ def _compute_record(mesh_path: Path, mesh_id: str) -> Dict[str, Any]:
         boundary_edges = int(sum(1 for g in edge_groups if len(g) == 1))
         is_closed = bool(boundary_edges == 0)
         is_edge_manifold = bool(all(len(g) <= 2 for g in edge_groups))
-        is_vertex_manifold = bool(mesh.is_winding_consistent)
+        is_winding_consistent = bool(mesh.is_winding_consistent)
+        is_vertex_manifold = is_winding_consistent
         is_manifold = bool(is_edge_manifold and is_vertex_manifold)
+        signed_volume = float(mesh.volume) if is_closed else 0.0
+        is_volume = bool(mesh.is_volume)
+        inside_out_suspect = bool(is_closed and is_winding_consistent and signed_volume < 0.0)
 
         bounds = mesh.bounds
         bmin = bounds[0]
@@ -65,6 +69,10 @@ def _compute_record(mesh_path: Path, mesh_id: str) -> Dict[str, Any]:
                 "is_manifold": is_manifold,
                 "is_edge_manifold": is_edge_manifold,
                 "is_vertex_manifold": is_vertex_manifold,
+                "is_winding_consistent": is_winding_consistent,
+                "is_volume": is_volume,
+                "signed_volume": signed_volume,
+                "inside_out_suspect": inside_out_suspect,
             }
         )
     except Exception as exc:

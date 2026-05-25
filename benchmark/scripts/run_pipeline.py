@@ -220,7 +220,11 @@ def main() -> int:
         candidate_records = [
             r
             for r in mesh_records
-            if r.get("status") == "ok" and bool(r.get("is_closed", False)) and bool(r.get("is_manifold", False))
+            if r.get("status") == "ok"
+            and bool(r.get("is_closed", False))
+            and bool(r.get("is_manifold", False))
+            and bool(r.get("is_winding_consistent", False))
+            and not bool(r.get("inside_out_suspect", True))
         ]
         dataset_pair_indices = [(i, j) for i in range(len(candidate_records)) for j in range(i + 1, len(candidate_records))]
         dataset_rng.shuffle(dataset_pair_indices)

@@ -189,10 +189,11 @@ Stats are computed by the dedicated script `benchmark\scripts\compute_mesh_stats
 
 Dataset mode now:
 - computes and caches dataset mesh stats in `<dataset>\mesh_stats.json` and `<dataset>\mesh_stats.csv`
-- samples cases only from meshes with `is_closed=true` and `is_manifold=true`
+- samples cases only from meshes with `status=ok`, `is_closed=true`, `is_manifold=true`, `is_winding_consistent=true`, and `inside_out_suspect=false`
 - discards sampled cases when preparation fails or expected result `Z` is empty, then samples replacement pairs until requested case count is reached (or candidate pairs are exhausted)
 - if fewer valid unique input pairs exist than requested via `--pairs`, it runs all available pairs
 - writes selected pairs to `<method output>\input_mesh_pairs.json/csv`
+- mesh stats include orientation diagnostics from trimesh (`is_winding_consistent`, `is_volume`, `signed_volume`, `inside_out_suspect`) for detecting inconsistent or potentially inside-out meshes
 
 Use `--update-stats` to force mesh stats recomputation:
 
@@ -208,6 +209,7 @@ python benchmark\scripts\run_pipeline.py `
 ## Key outputs per case
 
 - `case_result.json` (full metadata, cut logs, metrics)
+- `results_cases.json` / `results_cases.csv` contain a compact per-case summary (status, method runtime/memory/status, core geometry and boundary metrics)
 - Intermediate cut meshes are saved only when `debug.save_cut_meshes=true`.
 - Result meshes are saved in `<method output_path>\meshes\` when `save_output_meshes=true`.
 - Method execution metadata includes `runtime_sec`, `peak_rss_mb`, and combined input size (`input_size_mb`) computed from method inputs (`C + D`) in MB, used by complexity plots.

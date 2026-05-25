@@ -257,6 +257,8 @@ def get_dataset_mesh_stats(dataset_dir: Path, update_stats: bool = False) -> Lis
                 and "is_closed" in rec
                 and "is_manifold" in rec
                 and "num_triangles" in rec
+                and "is_winding_consistent" in rec
+                and "inside_out_suspect" in rec
                 for rec in loaded
             )
             if has_required_fields:
@@ -1142,7 +1144,11 @@ def run_dataset_benchmark(
     candidate_records = [
         r
         for r in mesh_records
-        if r.get("status") == "ok" and bool(r.get("is_closed", False)) and bool(r.get("is_manifold", False))
+        if r.get("status") == "ok"
+        and bool(r.get("is_closed", False))
+        and bool(r.get("is_manifold", False))
+        and bool(r.get("is_winding_consistent", False))
+        and not bool(r.get("inside_out_suspect", True))
     ]
     cases = sample_random_cases(
         candidate_records,
@@ -1249,9 +1255,63 @@ def load_method_configs(methods_dir: Path) -> List[Dict[str, Any]]:
     return methods
 
 
+def _compact_case_result(case: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "case_id": case.get("case_id"),
+        "input_a": case.get("input_a"),
+        "input_b": case.get("input_b"),
+        "operation": case.get("operation"),
+        "status": case.get("status"),
+    }
+    if "error" in case:
+        out["error"] = case.get("error")
+
+    method_meta = case.get("method")
+    if isinstance(method_meta, dict):
+        compact_method = {
+            "status": method_meta.get("status"),
+            "status_code": method_meta.get("status_code"),
+            "runtime_sec": method_meta.get("runtime_sec"),
+            "peak_rss_mb": method_meta.get("peak_rss_mb"),
+            "input_size_mb": method_meta.get("input_size_mb"),
+        }
+        if "terminated_reason" in method_meta:
+            compact_method["terminated_reason"] = method_meta.get("terminated_reason")
+        out["method"] = compact_method
+
+    metrics = case.get("metrics")
+    if isinstance(metrics, dict):
+        compact_metrics: Dict[str, Any] = {}
+        geometry = metrics.get("geometry")
+        if isinstance(geometry, dict):
+            compact_metrics["geometry"] = {
+                "hausdorff": geometry.get("hausdorff"),
+                "chamfer": geometry.get("chamfer"),
+                "d95_y_to_z": geometry.get("d95_y_to_z"),
+                "d95_z_to_y": geometry.get("d95_z_to_y"),
+            }
+        boundary = metrics.get("boundary")
+        if isinstance(boundary, dict):
+            compact_metrics["boundary"] = {
+                "precision": boundary.get("precision"),
+                "recall": boundary.get("recall"),
+                "fscore": boundary.get("fscore"),
+            }
+        if "boundary_tolerance" in metrics:
+            compact_metrics["boundary_tolerance"] = metrics.get("boundary_tolerance")
+        out["metrics"] = compact_metrics
+
+    if "preparation_peak_rss_mb" in case:
+        out["preparation_peak_rss_mb"] = case.get("preparation_peak_rss_mb")
+    if "preparation_status_code" in case:
+        out["preparation_status_code"] = case.get("preparation_status_code")
+    return out
+
+
 def save_global_outputs(output_root: Path, config: Dict[str, Any], results: Sequence[Dict[str, Any]]) -> None:
     _write_json(output_root / "config_snapshot.json", config)
-    _write_json(output_root / "results_cases.json", list(results))
-    _write_csv(output_root / "results_cases.csv", list(results))
+    compact_results = [_compact_case_result(r) if isinstance(r, dict) else {"status": "error"} for r in results]
+    _write_json(output_root / "results_cases.json", compact_results)
+    _write_csv(output_root / "results_cases.csv", compact_results)
     summary = summarize_results(results)
     _write_json(output_root / "results_summary.json", summary)
