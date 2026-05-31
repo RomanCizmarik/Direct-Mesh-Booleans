@@ -718,6 +718,15 @@ def sample_points_on_mesh(v: np.ndarray, f: np.ndarray, sample_count: int) -> np
     return np.asarray(p, dtype=np.float64)
 
 
+def _points_to_mesh_distances(points: np.ndarray, v: np.ndarray, f: np.ndarray) -> np.ndarray:
+    if points.size == 0 or v.size == 0 or f.size == 0:
+        return np.zeros((0,), dtype=np.float64)
+    sqd, _, _ = igl.point_mesh_squared_distance(points, v, f)
+    sqd_arr = np.asarray(sqd, dtype=np.float64).reshape(-1)
+    sqd_arr = np.maximum(sqd_arr, 0.0)
+    return np.sqrt(sqd_arr)
+
+
 def _pointset_distances(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     if a.size == 0 or b.size == 0:
         return np.zeros((0,), dtype=np.float64)
@@ -763,8 +772,8 @@ def evaluate_metrics(
 
     py = sample_points_on_mesh(v_y, f_y, samples)
     pz = sample_points_on_mesh(v_z, f_z, samples)
-    d_yz = _pointset_distances(py, pz)
-    d_zy = _pointset_distances(pz, py)
+    d_yz = _points_to_mesh_distances(py, v_z, f_z)
+    d_zy = _points_to_mesh_distances(pz, v_y, f_y)
 
     if d_yz.size == 0 or d_zy.size == 0:
         geo = {
