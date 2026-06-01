@@ -820,13 +820,22 @@ def evaluate_metrics(
         geo = {
             "hausdorff": float("nan"),
             "chamfer": float("nan"),
+            "chamfer_symmetric": float("nan"),
+            "chamfer_y_to_z": float("nan"),
+            "chamfer_z_to_y": float("nan"),
             "d95_y_to_z": float("nan"),
             "d95_z_to_y": float("nan"),
         }
     else:
+        chamfer_y_to_z = float(d_yz.mean())
+        chamfer_z_to_y = float(d_zy.mean())
+        chamfer_symmetric = float(chamfer_y_to_z + chamfer_z_to_y)
         geo = {
             "hausdorff": float(max(d_yz.max(initial=0.0), d_zy.max(initial=0.0))),
-            "chamfer": float(d_yz.mean() + d_zy.mean()),
+            "chamfer": chamfer_symmetric,  # backwards-compatible alias
+            "chamfer_symmetric": chamfer_symmetric,
+            "chamfer_y_to_z": chamfer_y_to_z,
+            "chamfer_z_to_y": chamfer_z_to_y,
             "d95_y_to_z": float(np.percentile(d_yz, 95)),
             "d95_z_to_y": float(np.percentile(d_zy, 95)),
         }
@@ -1345,6 +1354,9 @@ def _compact_case_result(case: Dict[str, Any]) -> Dict[str, Any]:
             compact_metrics["geometry"] = {
                 "hausdorff": geometry.get("hausdorff"),
                 "chamfer": geometry.get("chamfer"),
+                "chamfer_symmetric": geometry.get("chamfer_symmetric"),
+                "chamfer_y_to_z": geometry.get("chamfer_y_to_z"),
+                "chamfer_z_to_y": geometry.get("chamfer_z_to_y"),
                 "d95_y_to_z": geometry.get("d95_y_to_z"),
                 "d95_z_to_y": geometry.get("d95_z_to_y"),
             }
