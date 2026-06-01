@@ -116,6 +116,47 @@ def remove_unreferenced(v: np.ndarray, f: np.ndarray) -> Tuple[np.ndarray, np.nd
     return v_new, f_new
 
 
+def extract_submesh_by_face_mask(v: np.ndarray, f: np.ndarray, face_mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    if f.size == 0:
+        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.int64)
+    face_mask = np.asarray(face_mask, dtype=bool).reshape(-1)
+    if face_mask.shape[0] != f.shape[0]:
+        raise ValueError("Face mask length must match number of faces.")
+    if not np.any(face_mask):
+        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.int64)
+    return remove_unreferenced(np.asarray(v, dtype=np.float64), np.asarray(f, dtype=np.int64)[face_mask])
+
+
+def merge_meshes_with_vertex_weld(
+    v_a: np.ndarray,
+    f_a: np.ndarray,
+    v_b: np.ndarray,
+    f_b: np.ndarray,
+    epsilon: float = 1e-12,
+) -> Tuple[np.ndarray, np.ndarray]:
+    v_parts: List[np.ndarray] = []
+    f_parts: List[np.ndarray] = []
+    offset = 0
+
+    for v_part, f_part in (
+        (np.asarray(v_a, dtype=np.float64), np.asarray(f_a, dtype=np.int64)),
+        (np.asarray(v_b, dtype=np.float64), np.asarray(f_b, dtype=np.int64)),
+    ):
+        if f_part.size == 0:
+            continue
+        v_parts.append(v_part)
+        f_parts.append(f_part + offset)
+        offset += v_part.shape[0]
+
+    if not f_parts:
+        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.int64)
+
+    v_merged = np.vstack(v_parts)
+    f_merged = np.vstack(f_parts)
+    v_out, _, _, f_out = igl.remove_duplicate_vertices(v_merged, f_merged, float(epsilon))
+    return np.asarray(v_out, dtype=np.float64), np.asarray(f_out, dtype=np.int64)
+
+
 def signed_volume(v: np.ndarray, f: np.ndarray) -> float:
     if f.size == 0:
         return 0.0
@@ -858,27 +899,35 @@ def prepare_case_data(case: Dict[str, Any], config: Dict[str, Any], prep_dir: Pa
             save_steps_dir=(expected_case_dir / "D_cut_steps") if (save_cut_meshes and expected_case_dir is not None) else None,
         )
 
-        v_z_a, f_z_a, tag_after_a, z_a_stats = apply_sphere_cuts(
-            v_x,
-            f_x,
-            source_tag,
+        v_x_a, f_x_a = extract_submesh_by_face_mask(v_x, f_x, source_tag == 0)
+        v_x_b, f_x_b = extract_submesh_by_face_mask(v_x, f_x, source_tag == 1)
+
+        prov_x_a = np.arange(f_x_a.shape[0], dtype=np.int64)
+        v_z_a, f_z_a, _, z_a_stats = apply_sphere_cuts(
+            v_x_a,
+            f_x_a,
+            prov_x_a,
             spheres_a,
-            target_tag=0,
+            target_tag=None,
             save_steps_dir=(expected_case_dir / "Z_cut_A_steps") if (save_cut_meshes and expected_case_dir is not None) else None,
         )
-        v_z, f_z, tag_final, z_b_stats = apply_sphere_cuts(
-            v_z_a,
-            f_z_a,
-            tag_after_a,
+
+        prov_x_b = np.arange(f_x_b.shape[0], dtype=np.int64)
+        v_z_b, f_z_b, _, z_b_stats = apply_sphere_cuts(
+            v_x_b,
+            f_x_b,
+            prov_x_b,
             spheres_b,
-            target_tag=1,
+            target_tag=None,
             save_steps_dir=(expected_case_dir / "Z_cut_B_steps") if (save_cut_meshes and expected_case_dir is not None) else None,
         )
-        _ = tag_final
+        v_z, f_z = merge_meshes_with_vertex_weld(v_z_a, f_z_a, v_z_b, f_z_b, epsilon=1e-12)
 
         if save_cut_meshes and expected_case_dir is not None:
             save_mesh(expected_case_dir / "X.obj", v_x, f_x)
             np.save(expected_case_dir / "X_birth_indices.npy", j_x)
+            save_mesh(expected_case_dir / "X_A.obj", v_x_a, f_x_a)
+            save_mesh(expected_case_dir / "X_B.obj", v_x_b, f_x_b)
             save_mesh(expected_case_dir / "C.obj", v_c, f_c)
             save_mesh(expected_case_dir / "D.obj", v_d, f_d)
         if save_expected_result and expected_case_dir is not None:
