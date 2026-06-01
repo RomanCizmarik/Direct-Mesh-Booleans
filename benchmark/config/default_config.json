@@ -23,14 +23,14 @@
     "memory_check_interval_sec": 0.01
   },
   "debug": {
-    "save_cut_meshes": true,
-    "save_expected_result": true
+    "save_cut_meshes": false,
+    "save_expected_result": false
   },
   "plots": {
     "enabled": true,
     "output_subdir": "plots",
     "dpi": 150,
-    "formats": ["pdf"],
+    "formats": ["pdf", "html"],
     "complexity_bins": 80,
     "export_timeout_sec": 30.0,
     "fallback_html_on_export_failure": true

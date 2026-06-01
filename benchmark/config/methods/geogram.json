@@ -6,5 +6,5 @@
     "int": "operation=intersection"
   },
   "output_path": "geogram",
-  "save_output_meshes": true
+  "save_output_meshes": false
 }

@@ -6,5 +6,5 @@
     "int": "I"
   },
   "output_path": "direct_mesh_booleans_extension",
-  "save_output_meshes": true
+  "save_output_meshes": false
 }
