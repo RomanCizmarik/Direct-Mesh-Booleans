@@ -1089,15 +1089,12 @@ def run_case_with_prepared(
     case_id = str(case["case_id"])
     case_dir = output_root / case_id
     case_dir.mkdir(parents=True, exist_ok=True)
-    case_config_path = case_dir / "case_config_snapshot.json"
-    _write_json(case_config_path, config)
     meta: Dict[str, Any] = {
         "case_id": case_id,
         "input_a": case["input_a"],
         "input_b": case["input_b"],
         "operation": _normalize_op(case["operation"]),
         "status": "ok",
-        "config_snapshot_path": str(case_config_path),
     }
     if prepared.get("status") != "ok":
         meta["status"] = "error"

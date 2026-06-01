@@ -101,6 +101,8 @@ def _collect_plot_rows(run_root: Path) -> List[Dict[str, Any]]:
                     "chamfer_symmetric": chamfer_symmetric,
                     "chamfer_y_to_z": _safe_float(geo.get("chamfer_y_to_z")),
                     "chamfer_z_to_y": _safe_float(geo.get("chamfer_z_to_y")),
+                    "d95_y_to_z": _safe_float(geo.get("d95_y_to_z")),
+                    "d95_z_to_y": _safe_float(geo.get("d95_z_to_y")),
                     "runtime_sec": _safe_float(method_meta.get("runtime_sec")),
                     "peak_memory_usage": _safe_float(method_meta.get("peak_rss_mb")),
                     "combined_size_mb": combined_size_mb,
@@ -379,6 +381,30 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
     files, warns = _save_multi_format(
         fig,
         plots_dir / "chamfer_z_to_y_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_metric_box(rows, "d95_y_to_z", "Distance D95 (Y -> Z)")
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "d95_y_to_z_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_metric_box(rows, "d95_z_to_y", "Distance D95 (Z -> Y)")
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "d95_z_to_y_by_method",
         formats,
         dpi,
         export_timeout_sec,
