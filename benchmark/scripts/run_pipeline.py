@@ -112,7 +112,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    config = load_config(args.config)
+    main_config_path = args.config.resolve()
+    config = load_config(main_config_path)
     root_out_dir = args.output_dir.resolve()
     root_out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -144,6 +145,9 @@ def main() -> int:
         config["num_pairs"] = int(args.pairs)
     if args.seed is not None:
         config["seed"] = int(args.seed)
+
+    shutil.copy2(main_config_path, root_out_dir / "main_config_input.json")
+    _write_json(root_out_dir / "main_config_effective.json", config)
 
     methods: list[dict]
     if args.method_config is not None:
