@@ -819,7 +819,6 @@ def evaluate_metrics(
     if d_yz.size == 0 or d_zy.size == 0:
         geo = {
             "hausdorff": float("nan"),
-            "chamfer": float("nan"),
             "chamfer_symmetric": float("nan"),
             "chamfer_y_to_z": float("nan"),
             "chamfer_z_to_y": float("nan"),
@@ -832,7 +831,6 @@ def evaluate_metrics(
         chamfer_symmetric = float(chamfer_y_to_z + chamfer_z_to_y)
         geo = {
             "hausdorff": float(max(d_yz.max(initial=0.0), d_zy.max(initial=0.0))),
-            "chamfer": chamfer_symmetric,  # backwards-compatible alias
             "chamfer_symmetric": chamfer_symmetric,
             "chamfer_y_to_z": chamfer_y_to_z,
             "chamfer_z_to_y": chamfer_z_to_y,
@@ -1250,24 +1248,24 @@ def summarize_results(results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "failed_cases": failed,
     }
     haus = []
-    chamfer = []
+    chamfer_symmetric = []
     for r in results:
         metrics = r.get("metrics")
         if not metrics:
             continue
         geo = metrics.get("geometry", {})
         h = geo.get("hausdorff")
-        c = geo.get("chamfer")
+        c = geo.get("chamfer_symmetric")
         if isinstance(h, (float, int)) and np.isfinite(h):
             haus.append(float(h))
         if isinstance(c, (float, int)) and np.isfinite(c):
-            chamfer.append(float(c))
+            chamfer_symmetric.append(float(c))
     if haus:
         summary["hausdorff_mean"] = float(np.mean(haus))
         summary["hausdorff_median"] = float(np.median(haus))
-    if chamfer:
-        summary["chamfer_mean"] = float(np.mean(chamfer))
-        summary["chamfer_median"] = float(np.median(chamfer))
+    if chamfer_symmetric:
+        summary["chamfer_symmetric_mean"] = float(np.mean(chamfer_symmetric))
+        summary["chamfer_symmetric_median"] = float(np.median(chamfer_symmetric))
     return summary
 
 
@@ -1353,7 +1351,6 @@ def _compact_case_result(case: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(geometry, dict):
             compact_metrics["geometry"] = {
                 "hausdorff": geometry.get("hausdorff"),
-                "chamfer": geometry.get("chamfer"),
                 "chamfer_symmetric": geometry.get("chamfer_symmetric"),
                 "chamfer_y_to_z": geometry.get("chamfer_y_to_z"),
                 "chamfer_z_to_y": geometry.get("chamfer_z_to_y"),

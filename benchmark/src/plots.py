@@ -79,10 +79,7 @@ def _collect_plot_rows(run_root: Path) -> List[Dict[str, Any]]:
             metrics = case.get("metrics", {}) if isinstance(case.get("metrics"), dict) else {}
             geo = metrics.get("geometry", {}) if isinstance(metrics.get("geometry"), dict) else {}
             method_meta = case.get("method", {}) if isinstance(case.get("method"), dict) else {}
-            chamfer_legacy = _safe_float(geo.get("chamfer"))
             chamfer_symmetric = _safe_float(geo.get("chamfer_symmetric"))
-            if not np.isfinite(chamfer_symmetric):
-                chamfer_symmetric = chamfer_legacy
             combined_size_mb = _safe_float(method_meta.get("input_size_mb"))
             if not np.isfinite(combined_size_mb):
                 input_a = case.get("input_a")
@@ -101,7 +98,6 @@ def _collect_plot_rows(run_root: Path) -> List[Dict[str, Any]]:
                     "status": case.get("status"),
                     "success": 1 if case.get("status") == "ok" else 0,
                     "hausdorff": _safe_float(geo.get("hausdorff")),
-                    "chamfer": chamfer_symmetric,
                     "chamfer_symmetric": chamfer_symmetric,
                     "chamfer_y_to_z": _safe_float(geo.get("chamfer_y_to_z")),
                     "chamfer_z_to_y": _safe_float(geo.get("chamfer_z_to_y")),
