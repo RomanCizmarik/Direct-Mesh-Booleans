@@ -3,10 +3,10 @@
   "num_pairs": 32,
   "operations": ["union", "intersection", "difference"],
   "spheres": {
-    "count_min": 1,
-    "count_max": 10,
-    "radius_min_frac": 0.02,
-    "radius_max_frac": 0.08,
+    "count_min": 3,
+    "count_max": 5,
+    "radius_min_frac": 0.1,
+    "radius_max_frac": 0.15,
     "center_mode": "surface",
     "stacks": 14,
     "slices": 28
@@ -23,8 +23,8 @@
     "memory_check_interval_sec": 0.01
   },
   "debug": {
-    "save_cut_meshes": false,
-    "save_expected_result": false
+    "save_cut_meshes": true,
+    "save_expected_result": true
   },
   "plots": {
     "enabled": true,
