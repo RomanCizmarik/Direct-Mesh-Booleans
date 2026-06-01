@@ -231,6 +231,70 @@ def _plot_metric_box(rows: Sequence[Dict[str, Any]], metric: str, y_title: str) 
     return _apply_standard_layout(fig)
 
 
+def _plot_chamfer_asymmetry_box(rows: Sequence[Dict[str, Any]], eps: float = 1e-12) -> go.Figure:
+    fig = go.Figure()
+    methods = sorted({str(r["method"]) for r in rows})
+    colors = px.colors.qualitative.D3
+    for idx, method in enumerate(methods):
+        vals: List[float] = []
+        for r in rows:
+            if r["method"] != method or r["success"] != 1:
+                continue
+            yz = float(r.get("chamfer_y_to_z", float("nan")))
+            zy = float(r.get("chamfer_z_to_y", float("nan")))
+            if not np.isfinite(yz) or not np.isfinite(zy):
+                continue
+            vals.append(float(np.log10((yz + eps) / (zy + eps))))
+        if not vals:
+            continue
+        fig.add_trace(
+            go.Box(
+                y=vals,
+                name=method,
+                boxpoints=False,
+                marker_color=colors[idx % len(colors)],
+            )
+        )
+    fig.update_layout(
+        xaxis_title="Method",
+        yaxis_title="Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
+        legend_title="Method",
+    )
+    return _apply_standard_layout(fig)
+
+
+def _plot_success_rate(rows: Sequence[Dict[str, Any]]) -> go.Figure:
+    methods = sorted({str(r["method"]) for r in rows})
+    rates: List[float] = []
+    labels: List[str] = []
+    for method in methods:
+        subset = [r for r in rows if r["method"] == method]
+        total = len(subset)
+        succ = sum(int(r.get("success", 0)) for r in subset)
+        rate = (100.0 * succ / total) if total > 0 else 0.0
+        rates.append(rate)
+        labels.append(f"{succ}/{total}")
+
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=methods,
+                y=rates,
+                text=labels,
+                textposition="outside",
+                marker_color=px.colors.qualitative.D3[: len(methods)],
+            )
+        ]
+    )
+    fig.update_layout(
+        xaxis_title="Method",
+        yaxis_title="Success rate [%]",
+        showlegend=False,
+    )
+    fig.update_yaxes(range=[0.0, 105.0])
+    return _apply_standard_layout(fig)
+
+
 def _quantile_bin_medians(x_vals: np.ndarray, y_vals: np.ndarray, bins: int) -> Tuple[np.ndarray, np.ndarray]:
     if x_vals.size == 0 or y_vals.size == 0:
         return np.zeros((0,), dtype=np.float64), np.zeros((0,), dtype=np.float64)
@@ -405,6 +469,30 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
     files, warns = _save_multi_format(
         fig,
         plots_dir / "d95_z_to_y_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_chamfer_asymmetry_box(rows, eps=1e-12)
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "chamfer_asymmetry_logratio_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_success_rate(rows)
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "success_rate_by_method",
         formats,
         dpi,
         export_timeout_sec,

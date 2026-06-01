@@ -157,8 +157,10 @@ When `plots.enabled=true`, the run automatically creates:
 - `chamfer_by_method`
 - `chamfer_y_to_z_by_method`
 - `chamfer_z_to_y_by_method`
+- `chamfer_asymmetry_logratio_by_method`
 - `d95_y_to_z_by_method`
 - `d95_z_to_y_by_method`
+- `success_rate_by_method`
 - `runtime_vs_input_size` (elapsed time vs combined input size in MB)
 - `memory_vs_input_size` (peak memory vs combined input size in MB)
 
