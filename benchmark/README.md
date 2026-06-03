@@ -154,6 +154,8 @@ python benchmark\scripts\run_pipeline.py `
 
 When `plots.enabled=true`, the run automatically creates:
 - `hausdorff_by_method`
+- `hausdorff_y_to_z_by_method`
+- `hausdorff_z_to_y_by_method`
 - `chamfer_by_method`
 - `chamfer_winsorized_by_method`
 - `chamfer_y_to_z_by_method`
@@ -218,7 +220,7 @@ python benchmark\scripts\run_pipeline.py `
 
 - `case_result.json` (full metadata, cut logs, metrics)
 - `results_cases.json` / `results_cases.csv` contain a compact per-case summary (status, method runtime/memory/status, core geometry and boundary metrics)
-- Chamfer/Hausdorff geometric distances are evaluated from random surface samples in both directions as **point-to-mesh** distances. Geometry output includes `chamfer_y_to_z`, `chamfer_z_to_y`, and `chamfer_symmetric`.
+- Chamfer/Hausdorff geometric distances are evaluated from random surface samples in both directions as **point-to-mesh** distances. Geometry output includes directed + symmetric Hausdorff (`hausdorff_y_to_z`, `hausdorff_z_to_y`, `hausdorff`) and directed + symmetric Chamfer (`chamfer_y_to_z`, `chamfer_z_to_y`, `chamfer_symmetric`).
 - Winsorized Chamfer is also reported (`chamfer_winsorized_*`) by clipping directional distances above `metrics.chamfer_winsorized_upper_percentile` before averaging (default `95.0`).
 - Intermediate cut meshes are saved only when `debug.save_cut_meshes=true`.
 - Result meshes are saved in `<method output_path>\meshes\` when `save_output_meshes=true`.

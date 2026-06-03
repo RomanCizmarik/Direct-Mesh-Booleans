@@ -821,6 +821,8 @@ def evaluate_metrics(
     if d_yz.size == 0 or d_zy.size == 0:
         geo = {
             "hausdorff": float("nan"),
+            "hausdorff_y_to_z": float("nan"),
+            "hausdorff_z_to_y": float("nan"),
             "chamfer_symmetric": float("nan"),
             "chamfer_y_to_z": float("nan"),
             "chamfer_z_to_y": float("nan"),
@@ -840,8 +842,12 @@ def evaluate_metrics(
         chamfer_winsorized_y_to_z = float(np.minimum(d_yz, cap_yz).mean())
         chamfer_winsorized_z_to_y = float(np.minimum(d_zy, cap_zy).mean())
         chamfer_winsorized_symmetric = float(chamfer_winsorized_y_to_z + chamfer_winsorized_z_to_y)
+        hausdorff_y_to_z = float(d_yz.max(initial=0.0))
+        hausdorff_z_to_y = float(d_zy.max(initial=0.0))
         geo = {
-            "hausdorff": float(max(d_yz.max(initial=0.0), d_zy.max(initial=0.0))),
+            "hausdorff": float(max(hausdorff_y_to_z, hausdorff_z_to_y)),
+            "hausdorff_y_to_z": hausdorff_y_to_z,
+            "hausdorff_z_to_y": hausdorff_z_to_y,
             "chamfer_symmetric": chamfer_symmetric,
             "chamfer_y_to_z": chamfer_y_to_z,
             "chamfer_z_to_y": chamfer_z_to_y,
@@ -1376,6 +1382,8 @@ def _compact_case_result(case: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(geometry, dict):
             compact_metrics["geometry"] = {
                 "hausdorff": geometry.get("hausdorff"),
+                "hausdorff_y_to_z": geometry.get("hausdorff_y_to_z"),
+                "hausdorff_z_to_y": geometry.get("hausdorff_z_to_y"),
                 "chamfer_symmetric": geometry.get("chamfer_symmetric"),
                 "chamfer_y_to_z": geometry.get("chamfer_y_to_z"),
                 "chamfer_z_to_y": geometry.get("chamfer_z_to_y"),

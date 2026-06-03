@@ -98,6 +98,8 @@ def _collect_plot_rows(run_root: Path) -> List[Dict[str, Any]]:
                     "status": case.get("status"),
                     "success": 1 if case.get("status") == "ok" else 0,
                     "hausdorff": _safe_float(geo.get("hausdorff")),
+                    "hausdorff_y_to_z": _safe_float(geo.get("hausdorff_y_to_z")),
+                    "hausdorff_z_to_y": _safe_float(geo.get("hausdorff_z_to_y")),
                     "chamfer_symmetric": chamfer_symmetric,
                     "chamfer_y_to_z": _safe_float(geo.get("chamfer_y_to_z")),
                     "chamfer_z_to_y": _safe_float(geo.get("chamfer_z_to_y")),
@@ -418,6 +420,30 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
     files, warns = _save_multi_format(
         fig,
         plots_dir / "hausdorff_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_metric_box(rows, "hausdorff_y_to_z", "Hausdorff distance (Y -> Z)")
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "hausdorff_y_to_z_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_metric_box(rows, "hausdorff_z_to_y", "Hausdorff distance (Z -> Y)")
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "hausdorff_z_to_y_by_method",
         formats,
         dpi,
         export_timeout_sec,
