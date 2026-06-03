@@ -101,6 +101,9 @@ def _collect_plot_rows(run_root: Path) -> List[Dict[str, Any]]:
                     "chamfer_symmetric": chamfer_symmetric,
                     "chamfer_y_to_z": _safe_float(geo.get("chamfer_y_to_z")),
                     "chamfer_z_to_y": _safe_float(geo.get("chamfer_z_to_y")),
+                    "chamfer_winsorized_symmetric": _safe_float(geo.get("chamfer_winsorized_symmetric")),
+                    "chamfer_winsorized_y_to_z": _safe_float(geo.get("chamfer_winsorized_y_to_z")),
+                    "chamfer_winsorized_z_to_y": _safe_float(geo.get("chamfer_winsorized_z_to_y")),
                     "d95_y_to_z": _safe_float(geo.get("d95_y_to_z")),
                     "d95_z_to_y": _safe_float(geo.get("d95_z_to_y")),
                     "runtime_sec": _safe_float(method_meta.get("runtime_sec")),
@@ -231,7 +234,13 @@ def _plot_metric_box(rows: Sequence[Dict[str, Any]], metric: str, y_title: str) 
     return _apply_standard_layout(fig)
 
 
-def _plot_chamfer_asymmetry_box(rows: Sequence[Dict[str, Any]], eps: float = 1e-12) -> go.Figure:
+def _plot_asymmetry_box(
+    rows: Sequence[Dict[str, Any]],
+    y_to_z_key: str,
+    z_to_y_key: str,
+    y_title: str,
+    eps: float = 1e-12,
+) -> go.Figure:
     fig = go.Figure()
     methods = sorted({str(r["method"]) for r in rows})
     colors = px.colors.qualitative.D3
@@ -240,8 +249,8 @@ def _plot_chamfer_asymmetry_box(rows: Sequence[Dict[str, Any]], eps: float = 1e-
         for r in rows:
             if r["method"] != method or r["success"] != 1:
                 continue
-            yz = float(r.get("chamfer_y_to_z", float("nan")))
-            zy = float(r.get("chamfer_z_to_y", float("nan")))
+            yz = float(r.get(y_to_z_key, float("nan")))
+            zy = float(r.get(z_to_y_key, float("nan")))
             if not np.isfinite(yz) or not np.isfinite(zy):
                 continue
             vals.append(float(np.log10((yz + eps) / (zy + eps))))
@@ -257,7 +266,7 @@ def _plot_chamfer_asymmetry_box(rows: Sequence[Dict[str, Any]], eps: float = 1e-
         )
     fig.update_layout(
         xaxis_title="Method",
-        yaxis_title="Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
+        yaxis_title=y_title,
         legend_title="Method",
     )
     return _apply_standard_layout(fig)
@@ -429,6 +438,18 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
     created_files.extend(files)
     warnings.extend(warns)
 
+    fig = _plot_metric_box(rows, "chamfer_winsorized_symmetric", "Chamfer distance (winsorized symmetric)")
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "chamfer_winsorized_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
     fig = _plot_metric_box(rows, "chamfer_y_to_z", "Chamfer distance (Y -> Z)")
     files, warns = _save_multi_format(
         fig,
@@ -477,10 +498,34 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_chamfer_asymmetry_box(rows, eps=1e-12)
+    fig = _plot_asymmetry_box(
+        rows,
+        "chamfer_y_to_z",
+        "chamfer_z_to_y",
+        "Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
+        eps=1e-12,
+    )
     files, warns = _save_multi_format(
         fig,
         plots_dir / "chamfer_asymmetry_logratio_by_method",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_asymmetry_box(
+        rows,
+        "chamfer_winsorized_y_to_z",
+        "chamfer_winsorized_z_to_y",
+        "Winsorized Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
+        eps=1e-12,
+    )
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "chamfer_winsorized_asymmetry_logratio_by_method",
         formats,
         dpi,
         export_timeout_sec,

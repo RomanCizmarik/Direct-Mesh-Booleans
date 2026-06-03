@@ -810,6 +810,8 @@ def evaluate_metrics(
 ) -> Dict[str, Any]:
     samples = int(metrics_cfg.get("sample_count", 8000))
     tol_frac = float(metrics_cfg.get("boundary_fscore_tol_frac", 0.001))
+    winsor_pct = float(metrics_cfg.get("chamfer_winsorized_upper_percentile", 95.0))
+    winsor_pct = min(100.0, max(0.0, winsor_pct))
 
     py = sample_points_on_mesh(v_y, f_y, samples)
     pz = sample_points_on_mesh(v_z, f_z, samples)
@@ -822,6 +824,10 @@ def evaluate_metrics(
             "chamfer_symmetric": float("nan"),
             "chamfer_y_to_z": float("nan"),
             "chamfer_z_to_y": float("nan"),
+            "chamfer_winsorized_symmetric": float("nan"),
+            "chamfer_winsorized_y_to_z": float("nan"),
+            "chamfer_winsorized_z_to_y": float("nan"),
+            "chamfer_winsorized_upper_percentile": winsor_pct,
             "d95_y_to_z": float("nan"),
             "d95_z_to_y": float("nan"),
         }
@@ -829,11 +835,20 @@ def evaluate_metrics(
         chamfer_y_to_z = float(d_yz.mean())
         chamfer_z_to_y = float(d_zy.mean())
         chamfer_symmetric = float(chamfer_y_to_z + chamfer_z_to_y)
+        cap_yz = float(np.percentile(d_yz, winsor_pct))
+        cap_zy = float(np.percentile(d_zy, winsor_pct))
+        chamfer_winsorized_y_to_z = float(np.minimum(d_yz, cap_yz).mean())
+        chamfer_winsorized_z_to_y = float(np.minimum(d_zy, cap_zy).mean())
+        chamfer_winsorized_symmetric = float(chamfer_winsorized_y_to_z + chamfer_winsorized_z_to_y)
         geo = {
             "hausdorff": float(max(d_yz.max(initial=0.0), d_zy.max(initial=0.0))),
             "chamfer_symmetric": chamfer_symmetric,
             "chamfer_y_to_z": chamfer_y_to_z,
             "chamfer_z_to_y": chamfer_z_to_y,
+            "chamfer_winsorized_symmetric": chamfer_winsorized_symmetric,
+            "chamfer_winsorized_y_to_z": chamfer_winsorized_y_to_z,
+            "chamfer_winsorized_z_to_y": chamfer_winsorized_z_to_y,
+            "chamfer_winsorized_upper_percentile": winsor_pct,
             "d95_y_to_z": float(np.percentile(d_yz, 95)),
             "d95_z_to_y": float(np.percentile(d_zy, 95)),
         }
@@ -1249,6 +1264,7 @@ def summarize_results(results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
     haus = []
     chamfer_symmetric = []
+    chamfer_winsorized_symmetric = []
     for r in results:
         metrics = r.get("metrics")
         if not metrics:
@@ -1256,16 +1272,22 @@ def summarize_results(results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         geo = metrics.get("geometry", {})
         h = geo.get("hausdorff")
         c = geo.get("chamfer_symmetric")
+        cw = geo.get("chamfer_winsorized_symmetric")
         if isinstance(h, (float, int)) and np.isfinite(h):
             haus.append(float(h))
         if isinstance(c, (float, int)) and np.isfinite(c):
             chamfer_symmetric.append(float(c))
+        if isinstance(cw, (float, int)) and np.isfinite(cw):
+            chamfer_winsorized_symmetric.append(float(cw))
     if haus:
         summary["hausdorff_mean"] = float(np.mean(haus))
         summary["hausdorff_median"] = float(np.median(haus))
     if chamfer_symmetric:
         summary["chamfer_symmetric_mean"] = float(np.mean(chamfer_symmetric))
         summary["chamfer_symmetric_median"] = float(np.median(chamfer_symmetric))
+    if chamfer_winsorized_symmetric:
+        summary["chamfer_winsorized_symmetric_mean"] = float(np.mean(chamfer_winsorized_symmetric))
+        summary["chamfer_winsorized_symmetric_median"] = float(np.median(chamfer_winsorized_symmetric))
     return summary
 
 
@@ -1294,6 +1316,9 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg["limits"].setdefault("method_timeout_sec", 7200)
     cfg["limits"].setdefault("method_memory_limit_mb", 32768)
     cfg["limits"].setdefault("memory_check_interval_sec", 0.01)
+    cfg["metrics"].setdefault("sample_count", 8000)
+    cfg["metrics"].setdefault("boundary_fscore_tol_frac", 0.001)
+    cfg["metrics"].setdefault("chamfer_winsorized_upper_percentile", 95.0)
     cfg.setdefault("method_under_test", {})
     return cfg
 
@@ -1354,6 +1379,10 @@ def _compact_case_result(case: Dict[str, Any]) -> Dict[str, Any]:
                 "chamfer_symmetric": geometry.get("chamfer_symmetric"),
                 "chamfer_y_to_z": geometry.get("chamfer_y_to_z"),
                 "chamfer_z_to_y": geometry.get("chamfer_z_to_y"),
+                "chamfer_winsorized_symmetric": geometry.get("chamfer_winsorized_symmetric"),
+                "chamfer_winsorized_y_to_z": geometry.get("chamfer_winsorized_y_to_z"),
+                "chamfer_winsorized_z_to_y": geometry.get("chamfer_winsorized_z_to_y"),
+                "chamfer_winsorized_upper_percentile": geometry.get("chamfer_winsorized_upper_percentile"),
                 "d95_y_to_z": geometry.get("d95_y_to_z"),
                 "d95_z_to_y": geometry.get("d95_z_to_y"),
             }

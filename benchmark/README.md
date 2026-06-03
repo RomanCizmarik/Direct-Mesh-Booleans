@@ -155,9 +155,11 @@ python benchmark\scripts\run_pipeline.py `
 When `plots.enabled=true`, the run automatically creates:
 - `hausdorff_by_method`
 - `chamfer_by_method`
+- `chamfer_winsorized_by_method`
 - `chamfer_y_to_z_by_method`
 - `chamfer_z_to_y_by_method`
 - `chamfer_asymmetry_logratio_by_method`
+- `chamfer_winsorized_asymmetry_logratio_by_method`
 - `d95_y_to_z_by_method`
 - `d95_z_to_y_by_method`
 - `success_rate_by_method`
@@ -217,6 +219,7 @@ python benchmark\scripts\run_pipeline.py `
 - `case_result.json` (full metadata, cut logs, metrics)
 - `results_cases.json` / `results_cases.csv` contain a compact per-case summary (status, method runtime/memory/status, core geometry and boundary metrics)
 - Chamfer/Hausdorff geometric distances are evaluated from random surface samples in both directions as **point-to-mesh** distances. Geometry output includes `chamfer_y_to_z`, `chamfer_z_to_y`, and `chamfer_symmetric`.
+- Winsorized Chamfer is also reported (`chamfer_winsorized_*`) by clipping directional distances above `metrics.chamfer_winsorized_upper_percentile` before averaging (default `95.0`).
 - Intermediate cut meshes are saved only when `debug.save_cut_meshes=true`.
 - Result meshes are saved in `<method output_path>\meshes\` when `save_output_meshes=true`.
 - Method execution metadata includes `runtime_sec`, `peak_rss_mb`, and combined input size (`input_size_mb`) computed from method inputs (`C + D`) in MB, used by complexity plots.
