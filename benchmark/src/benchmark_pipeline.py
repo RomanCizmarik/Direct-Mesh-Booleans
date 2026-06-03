@@ -441,18 +441,17 @@ def apply_sphere_cuts(
         j = np.asarray(j).reshape(-1).astype(np.int64)
 
         parent_tags = prov_cur[j]
-        # trim_with_solid's boolean label convention in Python bindings may vary
-        # across versions; remove the minority side to realize local "hole" cuts.
-        remove_base = d
-        if remove_base.sum() > (remove_base.size - remove_base.sum()):
-            remove_base = ~remove_base
+        ft_arr = np.asarray(ft, dtype=np.int64)
+        # In libigl's trim_with_solid implementation, D is derived from SP > 0,
+        # i.e., it marks faces outside the solid. We remove the inside part.
+        remove_base = ~d
         if target_tag is None:
             remove_mask = remove_base
         else:
             remove_mask = remove_base & (parent_tags == int(target_tag))
         keep_mask = ~remove_mask
 
-        f_keep = np.asarray(ft, dtype=np.int64)[keep_mask]
+        f_keep = ft_arr[keep_mask]
         prov_keep = parent_tags[keep_mask]
         removed_faces = int(remove_mask.sum())
         total_faces = int(ft.shape[0])
