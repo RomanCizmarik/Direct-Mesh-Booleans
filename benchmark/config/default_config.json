@@ -3,17 +3,18 @@
   "num_pairs": 32,
   "operations": ["union", "intersection", "difference"],
   "spheres": {
-    "count_min": 3,
-    "count_max": 5,
-    "radius_min_frac": 0.1,
-    "radius_max_frac": 0.15,
+    "count_min": 10,
+    "count_max": 20,
+    "radius_min_frac": 0.03,
+    "radius_max_frac": 0.05,
     "center_mode": "surface",
     "stacks": 14,
     "slices": 28
   },
   "metrics": {
-    "sample_count": 8000,
-    "boundary_fscore_tol_frac": 0.001
+    "sample_count": 10000,
+    "boundary_fscore_tol_frac": 0.001,
+    "chamfer_winsorized_upper_percentile": 95.0
   },
   "limits": {
     "preparation_timeout_sec": 1200,
