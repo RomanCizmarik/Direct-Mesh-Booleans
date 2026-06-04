@@ -6,6 +6,7 @@
 //#include "HelperDefines.h"
 #include "MeshArrangement.h"
 #include "FastWindingNumber.h"
+#include "AcceleratorAccessor.h"
 
 #include <Eigen/SparseCore>
 
@@ -27,6 +28,7 @@ namespace DMB
         using tTriangle = std::array<tPoint, 3>;
         using tTriangleIndices = std::array<uint, 3>;
         using tFWN = typename FastWindingNumber<MeshType>;
+        using tAcceleratorAccessor = typename AcceleratorAccessor<MeshType>;
 
     public:
         MatrixMesh(int label, const MeshArrangement<MeshType>& ma);
@@ -42,6 +44,8 @@ namespace DMB
             m_label = bitsetLabel;
 
             buildOperand(ma, filterFunction);
+
+            m_accAccessor.setMesh(&m_mesh);
         }
         uint getFaceEdgeId(uint tId, int i);
 
@@ -104,10 +108,16 @@ namespace DMB
             }
         }
 
-        bool disconnectComponents(MeshArrangement<MeshType>& ma);
+
+        //TODO: make MA member
+        std::vector<tFaceHandle> splitAndRelabelComponent(const std::vector<tFaceHandle>& component, double edgeLenghtSplitLimit, MeshArrangement<MeshType>& ma);
+         tVertexHandle splitEdge(tEdgeHandle eh, const tPoint& splitPos, MeshArrangement<MeshType>& ma);
+
+        bool disconnectComponents(MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other);
 
         void classifyIsolatedComponents(MatrixMesh<MeshType>& other);
-        std::shared_ptr<tFWN> getFWN();
+        //std::shared_ptr<tFWN> getFWN();
+        tAcceleratorAccessor* getAcceleratorAccessor() { return &m_accAccessor; }
 
         template<typename F>
         void classifyMeshArrangement(MeshArrangement<MeshType>& ma, int operandLabel, const F& predicate);
@@ -179,6 +189,7 @@ namespace DMB
                     if (maToOperandVertices[maVh] < 0)
                     {
                         maToOperandVertices[maVh] = newVhId;
+                        m_operandToMaVertices[newVhId] = maVh;
                         ++newVhId;
 
                         auto* gp = ma.m_coordinatesImplicit[maVh];
@@ -233,6 +244,11 @@ namespace DMB
         bigfloat calcSignedVolumeExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
         int calcVolumeSignExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
 
+        uint addVertex(double x, double y, double z, uint MAVhId);
+        uint addNewFace(uint vh0, uint vh1, uint vh2);
+        void updateFace(uint fh, uint vh0, uint vh1, uint vh2);
+
+        void FWNSplit(const std::vector<tFaceHandle>& component, MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other);
 
         template<typename F>
         void debug_showMesh(const F& func);
@@ -273,12 +289,16 @@ namespace DMB
         std::vector<bool> m_faceFlipped;
         std::vector<bool> m_selfIntersectingFace;
 
+        //duplicating vertices may result in several operand vertex being mapped to one MA vertex
+        std::map<uint, uint> m_operandToMaVertices;
+        //TODO: rename this - it means this operand face idx to MA face idx
         std::vector<uint> m_tIdToOriginalTId;
 
         //TODO delete debug
         std::vector<tVertexHandle> m_matrixVhToOMVh;
 
         MeshType m_mesh;
+        tAcceleratorAccessor m_accAccessor;
 
         //mesh properties
         OpenMesh::FPropHandleT<uint> m_pFhToMaFh;
@@ -290,6 +310,7 @@ namespace DMB
         OpenMesh::VPropHandleT<uint> m_pVhToMaVId;
         OpenMesh::VPropHandleT<bool> m_pCoplanarVertex;
         OpenMesh::EPropHandleT<bool> m_pCoplanarEdge;
+        OpenMesh::VPropHandleT<bool> m_pIntersectionVertex;
 
         //can this be optimized somehow? this can take up a lot of memory, maybe it's an unnecessary copy
         std::vector<std::vector<tFaceHandle>> m_isolatedComponents;

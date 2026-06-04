@@ -14,7 +14,7 @@ DMB::MeshArrangement<MeshType>::MeshArrangement() :
 template<typename MeshType>
 inline void DMB::MeshArrangement<MeshType>::updateMatrices()
 {
-    m_nFaces = m_triangles.size();
+    m_nFaces = m_triangles.size() / 3;
     m_nVertices = m_coordinatesImplicit.size();
 
     //TODO: make some property management system
@@ -317,17 +317,7 @@ inline void DMB::MeshArrangement<MeshType>::classifyFaces()
                 return false;
             };
 
-        auto insideSimplified = [this, &trianglePoints](uint leftTriId, uint rightTriId, genericPoint* p)
-            {
-                std::array<genericPoint*, 3 > leftTri = trianglePoints(leftTriId);
-                std::array<genericPoint*, 3 > rightTri = trianglePoints(rightTriId);
-
-                int orientationL = (genericPoint::orient3D(*leftTri[0], *leftTri[1], *leftTri[2], *p) * (int)m_multiplier);
-                int orientationR = (genericPoint::orient3D(*rightTri[0], *rightTri[1], *rightTri[2], *p) * (int)m_multiplier);
-
-                return (orientationL + orientationR) <= 0;
-            };
-
+        
         auto radialSort = [this, &edgeVertices, &trianglePoints, &remainingVId](uint tId, const std::vector<uint>& trianglesToSort)
             {
                 std::array<genericPoint*, 3 > triPoints = trianglePoints(tId);
@@ -684,6 +674,44 @@ inline void DMB::MeshArrangement<MeshType>::buildEdgeVertices()
 }
 
 template<typename MeshType>
+inline uint DMB::MeshArrangement<MeshType>::addVertex(double x, double y, double z)
+{
+    uint newVhId = (uint)m_coordinatesImplicit.size();
+    m_coordinatesImplicit.push_back(new explicitPoint3D(x, y, z)); //TODO: chech allocation, is it deleted somewhere?
+    m_coordinates.push_back(x);
+    m_coordinates.push_back(y);
+    m_coordinates.push_back(z);
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline uint DMB::MeshArrangement<MeshType>::addNewFace(uint vh0, uint vh1, uint vh2, std::bitset<NBIT> origin)
+{
+    uint newVhId = (uint)m_triangles.size() / 3;
+
+    m_triangles.push_back(vh0);
+    m_triangles.push_back(vh1);
+    m_triangles.push_back(vh2);
+
+    m_labels.push_back(origin);
+
+    //TODO: FILL IN REMAINING PROPERTIES!
+    m_coplanarFace.push_back(false);
+    m_faceClassifiedByComponent.push_back(-1);
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline void DMB::MeshArrangement<MeshType>::updateFace(uint fh, uint vh0, uint vh1, uint vh2)
+{
+    m_triangles[fh * 3 + 0] = vh0;
+    m_triangles[fh * 3 + 1] = vh1;
+    m_triangles[fh * 3 + 2] = vh2;
+}
+
+template<typename MeshType>
 inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
 {
     using tPoint = typename MeshType::Point;
@@ -719,36 +747,50 @@ inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
 
         debugMesh.set_color(fh, { 192,192,192 });
 
+        
 
-
-        //if (m_intersectionEdgeFaceProp[tId])
+        //if (m_boPredicates[tId] == 0)
         //{
-        //    auto IOLabel = m_faceIOLabeling[tId];
-        //    auto faceLabel = m_labels[tId];
-
-
-        //    if (IOLabel.count() > 0)
-        //    {
-        //        debugMesh.set_color(fh, { 0,255,0 });
-        //    }
-        //    else
-        //    {
-        //        debugMesh.set_color(fh, { 255,0,0 });
-
-        //    }
-
-
-        ////    //if (faceLabel[0] == 1 && IOLabel[1] == 0 && IOLabel[0] == 0)
-        ////    //{
-        ////    //    debugMesh.set_color(fh, { 0,255,0 });
-        ////    //}
-
-        ////    //if (faceLabel[1] == 1 && IOLabel[0] == 1 && IOLabel[1] == 0)
-        ////    //{
-        ////    //    debugMesh.set_color(fh, { 0,255,0 });
-        ////    //}
-
+        //    debugMesh.set_color(fh, { 255,0,0 });
         //}
+        //if (m_boPredicates[tId] == 1)
+        //{
+        //    debugMesh.set_color(fh, { 0,255,0 });
+        //}
+        //if (m_boPredicates[tId] == -1)
+        //{
+        //    debugMesh.set_color(fh, { 125,125,0 });
+        //}
+        
+ 
+        if (m_intersectionEdgeFaceProp[tId])
+        {
+            auto IOLabel = m_faceIOLabeling[tId];
+            auto faceLabel = m_labels[tId];
+
+
+            if (IOLabel.count() > 0)
+            {
+                debugMesh.set_color(fh, { 255,0,0 });
+            }
+            else
+            {
+                debugMesh.set_color(fh, { 0,255,0 });
+
+            }
+
+
+        //    //if (faceLabel[0] == 1 && IOLabel[1] == 0 && IOLabel[0] == 0)
+        //    //{
+        //    //    debugMesh.set_color(fh, { 0,255,0 });
+        //    //}
+
+        //    //if (faceLabel[1] == 1 && IOLabel[0] == 1 && IOLabel[1] == 0)
+        //    //{
+        //    //    debugMesh.set_color(fh, { 0,255,0 });
+        //    //}
+
+        }
 
         //if (m_coplanarFace[tId])
         //{
@@ -762,10 +804,10 @@ inline void DMB::MeshArrangement<MeshType>::buildDebugMesh()
     //debugMesh.update_normals();
 
     OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-    //opt += OpenMesh::IO::Options::FaceColor;
+    opt += OpenMesh::IO::Options::FaceColor;
 
     debugMesh.update_normals();
-   // DMB::saveMesh(debugMesh, "C:/skola/PhD/Samples/booleans/debugMA.obj", opt);
+    OpenMesh::IO::write_mesh(debugMesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/debugMA.ply", opt);
 }
 
 template<typename MeshType>

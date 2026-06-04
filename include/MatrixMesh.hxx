@@ -7,6 +7,11 @@
 #include <array>
 #include <atomic>
 
+//TODO: experimetns
+#include <stack>
+//TODO: move to Refinement header
+#include <queue>
+
 /*
 * self intersections https://diglib.eg.org/bitstream/handle/10.2312/conf.EG2012.tutorials.t4/t4.pdf?sequence=1
 *     [CK10] use a intermediate BSP
@@ -26,6 +31,8 @@ inline DMB::MatrixMesh<MeshType>::MatrixMesh(int label, const MeshArrangement<Me
 
     //buildOperand(ma);
     //buildManifoldMesh();
+
+    m_accAccessor.setMesh(&m_mesh);
 }
 
 
@@ -34,7 +41,7 @@ inline DMB::MatrixMesh<MeshType>::MatrixMesh(int label, const MeshArrangement<Me
 template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::updateMatrices()
 {
-    m_nFaces = m_triangles.size();
+    m_nFaces = m_triangles.size() / 3;
     m_nVertices = m_coordinatesImplicit.size();
 
     buildVertexEdgeMatrix();
@@ -511,7 +518,7 @@ inline void DMB::MatrixMesh<MeshType>::addManifoldFaces()
 
     }
 
-    //DMB::saveMesh(m_mesh, "C:/T3D/Samples/Booleans/meshWithoutNonManifolds.obj");
+    //OpenMesh::IO::write_mesh(m_mesh, "C:/T3D/Samples/Booleans/meshWithoutNonManifolds.obj");
 
 }
 
@@ -881,7 +888,7 @@ inline void DMB::MatrixMesh<MeshType>::addNonManifoldEdges(bool considerOrigin /
 
     //m_mesh.delete_isolated_vertices();
     //m_mesh.garbage_collection();
-    //DMB::saveMesh(m_mesh, "C:/skola/PhD/Samples/booleans/meshHalfWay"+ std::to_string(m_intLabel) +".obj");
+    //OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/Samples/booleans/meshHalfWay"+ std::to_string(m_intLabel) +".obj");
 }
 
 template<typename MeshType>
@@ -1352,6 +1359,7 @@ inline uint DMB::MatrixMesh<MeshType>::duplicateVertex(uint vId)
     //TODO: make some property management!
     m_nonManifoldEdgeVertexProp.push_back(false);
     m_nonManifoldVertexProp.push_back(false);
+    m_operandToMaVertices[newVId] = m_operandToMaVertices[vId];
 
     ++m_nVertices;
 
@@ -1482,6 +1490,8 @@ inline bool DMB::MatrixMesh<MeshType>::buildManifoldMesh(bool considerOrigin/* =
 
         addFace(tId);
     }
+
+    m_accAccessor.setDirty();
 
     return success;
 }
@@ -1656,13 +1666,14 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 {
 
     transferArrangementPropertiesToMesh();
-    detectBoundaries();
-    handleCoplanarFaces();
+    //detectBoundaries();
+    //handleCoplanarFaces();
 
     //std::string path = "C:/T3D/Samples/Booleans/";
-    std::string path = "C:/skola/PhD/Samples/booleans/components/";
+    //std::string path = "C:/skola/PhD/Samples/booleans/components/";
+    std::string path = "C:/skola/PhD/VUT/booleans_paper/extension/debug/";
 
-#if 0
+#if 1
 
     MeshType debugMesh;
 
@@ -1693,7 +1704,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
     OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
     opt += OpenMesh::IO::Options::FaceColor;
-    DMB::saveMesh(debugMesh, path + "debugMAMesh"+std::to_string(m_intLabel)+".stl");
+    OpenMesh::IO::write_mesh(debugMesh, path + "debugMAMesh"+std::to_string(m_intLabel)+".stl");
 #endif
 
 
@@ -1714,7 +1725,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
         opt += OpenMesh::IO::Options::FaceColor;
-        //DMB::saveMesh(m_mesh, path + "intersecionFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
+        OpenMesh::IO::write_mesh(m_mesh, path + "intersecionFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
     }
 
     {
@@ -1732,7 +1743,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
         opt += OpenMesh::IO::Options::FaceColor;
-        //DMB::saveMesh(m_mesh, path + "coplanarFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
+        //OpenMesh::IO::write_mesh(m_mesh, path + "coplanarFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
     }
 
     {
@@ -1753,9 +1764,10 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
         opt += OpenMesh::IO::Options::FaceColor;
-       // DMB::saveMesh(m_mesh, path + "IOFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
+        OpenMesh::IO::write_mesh(m_mesh, path + "IOFaces_operand_" + std::to_string(m_intLabel) + ".ply", opt);
     }
 
+#if 0
     {
         auto getConnectedComponents = [](MeshType& mesh)
             {
@@ -1812,14 +1824,15 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
         for (const auto& component : components)
         {
             MeshType meshPart;
-            //DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component);
+            DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component, true);
 
             OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-            //DMB::saveMesh(meshPart, "C:/skola/PhD/Samples/booleans/components/cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(cc) + ".obj", opt);
+            OpenMesh::IO::write_mesh(meshPart, path + std::to_string(m_intLabel) + "_" + std::to_string(cc) + ".obj", opt);
             ++cc;
         }
     }
 
+#endif
 #endif
 
 #if 0
@@ -1900,8 +1913,8 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
         insideMesh.update_normals();
         outsideMesh.update_normals();
 
-        DMB::saveMesh(insideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesInside.stl");
-        DMB::saveMesh(outsideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesOutside.stl");
+        OpenMesh::IO::write_mesh(insideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesInside.stl");
+        OpenMesh::IO::write_mesh(outsideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesOutside.stl");
     }
 
     //inside outside components
@@ -1927,13 +1940,13 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 
         insideMesh.update_normals();
         outsideMesh.update_normals();
-        DMB::saveMesh(insideMesh, path + "insideMesh" + std::to_string(m_intLabel) + ".stl");
-        DMB::saveMesh(outsideMesh, path + "outsideMesh" + std::to_string(m_intLabel) + ".stl");
+        OpenMesh::IO::write_mesh(insideMesh, path + "insideMesh" + std::to_string(m_intLabel) + ".stl");
+        OpenMesh::IO::write_mesh(outsideMesh, path + "outsideMesh" + std::to_string(m_intLabel) + ".stl");
     }
 
     //whole mesh
     m_mesh.update_normals();
-    DMB::saveMesh(m_mesh, path + "meshOperand" + std::to_string(m_intLabel) + ".obj");
+    OpenMesh::IO::write_mesh(m_mesh, path + "meshOperand" + std::to_string(m_intLabel) + ".obj");
 #endif
 }
 
@@ -2118,11 +2131,15 @@ inline void DMB::MatrixMesh<MeshType>::adjustOrientation(MeshArrangement<MeshTyp
 }
 
 template<typename MeshType>
-inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<MeshType>& ma)
+inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other)
 {
     transferArrangementPropertiesToMesh();
     detectBoundaries();
     handleCoplanarFaces();
+
+    //TODO: MOVE SOMEWHERE ELSE!
+    OpenMesh::VProp<bool> intersectionVertex(false, m_mesh, "bo_pIntersectionVertex");
+    m_pIntersectionVertex = intersectionVertex.getRawProperty();
 
     OpenMesh::EProp<bool> pIntersectionEdge(m_mesh, m_pIntersectionEdge);
     //OpenMesh::VProp<uint> pOperandToMeshArrangementIndex(m_mesh, m_pOperandToMeshArrangementIndex);
@@ -2133,10 +2150,1331 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
     OpenMesh::FProp< bool > intersectionFace(m_mesh, m_pIntersectionFace);
 
     OpenMesh::FProp<uint> pFhToMaFh(m_mesh, m_pFhToMaFh);
+    OpenMesh::VProp<uint> pVhToMaVId(m_mesh, m_pVhToMaVId);
+    OpenMesh::VProp<int> intersectionValance(0, m_mesh);
+
     OpenMesh::FProp<bool> coplanarFace(m_mesh, m_pCoplanarFace);
 
 
-    OpenMesh::VProp<bool> intersectionVertex(false, m_mesh);
+    std::vector<std::vector<tFaceHandle>> components;
+
+    //TODO: precompute?
+    tScalar edgeSplitLimit = std::min(calcAverageEdgeLength(m_mesh), calcAverageEdgeLength(other.m_mesh));
+
+    auto fwnToColor = [](double fwn) -> typename MeshType::Color
+        {
+            if (fwn <= 0.0) return { 0, 255, 0 };   // green
+            if (fwn >= 1.0) return { 255, 0, 0 };   // red
+
+            const double t = fwn; // 0..1
+            const unsigned char r = static_cast<unsigned char>(255.0 * t);
+            const unsigned char g = static_cast<unsigned char>(255.0 * (1.0 - t));
+            return { r, g, 0 }; // gradient green -> yellow -> red
+        };
+
+    //componnet will be directly modified
+    auto FWNBasedComponentSplit = [&, this](const std::vector<tFaceHandle>& component)
+        {
+            //TODO: THIS IS HIGHLY UNOPTIMAL!!! Use accessor, that rebuilds FWN only once for the whole run...
+            //auto acc = other.getFWN();
+            auto acc = other.getAcceleratorAccessor()->getFastWindingNumber();
+
+            OpenMesh::VProp<double> pFWN(0.0, m_mesh);
+            OpenMesh::VProp<double> pRawFWN(0.0, m_mesh);
+            OpenMesh::VProp<int> pIntersectionCurveId(-1, m_mesh);
+
+
+            OpenMesh::VProp<bool> pNewVh(false, m_mesh);
+            OpenMesh::EProp<bool> pEdgeToSplit(false, m_mesh);
+
+            OpenMesh::VProp<bool> exactlyClassifiedVh(false, m_mesh);
+            OpenMesh::VProp<std::bitset<NBIT>> exactClassification(0, m_mesh);
+
+            OpenMesh::HProp<std::bitset<NBIT>> originalLabeling(0, m_mesh);
+            OpenMesh::HProp<bool> intersectionHe(false, m_mesh);
+
+            std::unordered_set<tVertexHandle> vertices;
+            std::unordered_set<tEdgeHandle> edgesToSplit;
+
+
+
+            auto assigneIntersectionCurveIds = [this, &component, &pIntersectionCurveId, &pIntersectionEdge]()
+            {   
+                //gether intersection edges
+                std::unordered_set<tEdgeHandle> intersectionEdges;
+                OpenMesh::EProp<bool> pEdgeProcessed(false, m_mesh);
+
+                for (auto fh : component)
+                {
+                    for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+                    {
+                        if (pIntersectionEdge[eh])
+                        {
+                            intersectionEdges.insert(eh);
+                        }
+                    }
+                }
+
+                std::queue<tEdgeHandle> q;
+                int intersectionCurveId = 0;
+
+                for (auto eh : intersectionEdges)
+                {
+                    if (pEdgeProcessed[eh])
+                    {
+                        continue;
+                    }
+
+
+                    //start new component
+                    q.push(eh);
+
+                    while (!q.empty())
+                    {
+                        auto topEh = OpenMesh::make_smart(q.front(), m_mesh);
+                        q.pop();
+
+                        pIntersectionCurveId[topEh.v0()] = intersectionCurveId;
+                        pIntersectionCurveId[topEh.v1()] = intersectionCurveId;
+                        pEdgeProcessed[topEh] = true;
+
+                        for (auto vh : topEh.vertices())
+                        {
+                            for (auto eeh : vh.edges())
+                            {
+                                if (pIntersectionEdge[eeh] && !pEdgeProcessed[eeh])
+                                {
+                                    q.push(eeh);
+                                }
+                            }
+                        }
+
+                    }
+
+                    ++intersectionCurveId;
+                }
+
+            };
+
+            auto componentCopy = component;
+
+            //DEBUG
+            //{
+
+            //    for (auto fh : componentCopy)
+            //    {
+            //        if (m_mesh.status(fh).deleted())
+            //        {
+            //            continue;
+            //        }
+
+            //        m_mesh.set_color(fh, { 128, 128, 128 });
+
+            //        if (intersectionFace[fh])
+            //        {
+            //            typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+            //            m_mesh.set_color(fh, c);
+
+            //        }
+
+            //    }
+
+            //    //for (auto eh : m_mesh.edges())
+            //    //{
+            //    //    auto f0 = eh.h0().face();
+            //    //    auto f1 = eh.h1().face();
+            //    //    if (pIntersectionEdge[eh] && (intersectionFace[f0] != intersectionFace[f1]))
+            //    //    {
+            //    //        typename MeshType::Color c0 = intersectionFace[f0] ? m_mesh.color(f0) : MeshType::Color(255, 165, 0);
+            //    //        m_mesh.set_color(f0, c0);
+
+            //    //        typename MeshType::Color c1 = intersectionFace[f1] ? m_mesh.color(f1) : MeshType::Color(255, 165, 0);
+            //    //        m_mesh.set_color(f1, c1);
+            //    //    }
+            //    //}
+
+            //    //for (auto vh : m_mesh.vertices())
+            //    //{
+            //    //    m_mesh.set_color(vh, MeshType::Color(255, 255, 0));
+
+            //    //    if (intersectionVertex[vh] && intersectionValance[vh] == 1)
+            //    //    {
+            //    //        m_mesh.set_color(vh, MeshType::Color(255, 0, 0));
+            //    //    }
+            //    //}
+
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
+
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        opt += OpenMesh::IO::Options::FaceColor;
+            //        //opt += OpenMesh::IO::Options::VertexColor;
+            //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) +  "_before.ply", opt);
+            //        //OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_mesh_before.ply", opt);
+            //    }
+            //}
+
+
+
+            for (auto fh : component)
+            {
+                for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
+                {
+                    vertices.insert(vh);
+
+                    if (intersectionFace[fh] && !intersectionVertex[vh])
+                    {
+                        exactlyClassifiedVh[vh] = true;
+                        exactClassification[vh] = labeling[fh];
+                    }
+                }
+            }
+
+            //copy original label to hes
+            for (auto fh : component)
+            {
+                for (auto he : OpenMesh::make_smart(fh, m_mesh).halfedges())
+                {
+                    if (pIntersectionEdge[he.edge()])
+                    {
+                        intersectionHe[he] = true;
+                        originalLabeling[he] = labeling[he.face()];
+                    }
+                }
+            }
+
+
+            // Compute raw FWN for all component vertices.
+            for (auto vh : vertices)
+            {
+                pRawFWN[vh] = acc->windingNumber(m_mesh.point(vh));
+            }
+
+            // Build a cut-placement field:
+            //  - exact intersection vertices are fixed to 0.5
+            //  - one-ring neighbors of intersection vertices are blended towards 0.5
+            //  - all other vertices keep raw FWN
+            for (auto vh : vertices)
+            {
+                if (intersectionVertex[vh])
+                {
+                    pFWN[vh] = 0.5;
+                }
+                else
+                {
+                    bool adjacentToIntersection = false;
+                    for (auto outHe : OpenMesh::make_smart(vh, m_mesh).outgoing_halfedges())
+                    {
+                        if (intersectionVertex[outHe.to()])
+                        {
+                            adjacentToIntersection = true;
+                            break;
+                        }
+                    }
+
+                    const double raw = pRawFWN[vh];
+                    if (adjacentToIntersection)
+                    {
+                        constexpr double oneRingBlend = 0.35;
+                        pFWN[vh] = (1.0 - oneRingBlend) * raw + oneRingBlend * 0.5;
+                    }
+                    else
+                    {
+                        pFWN[vh] = raw;
+                    }
+                }
+
+            }
+
+            //DEBUG
+            //{
+            //    for (auto vh : vertices)
+            //    {
+            //        //m_mesh.set_color(vh, { 128, 128, 128 });
+
+            //        //if (pFWN[vh] == 0.5)
+            //        //{
+            //        //    m_mesh.set_color(vh, typename MeshType::Color{ 128, 128, 0 });
+
+            //        //}
+            //        //else if (pFWN[vh] > 0.5)
+            //        //{
+            //        //    m_mesh.set_color(vh, typename MeshType::Color{ 255, 0, 0 });
+            //        //}
+            //        //else
+            //        //{
+            //        //    m_mesh.set_color(vh, typename MeshType::Color{ 0, 255, 0 });
+
+            //        //}
+            //        //m_mesh.set_color(vh, fwnToColor(pRawFWN[vh]));
+            //        m_mesh.set_color(vh, fwnToColor(pFWN[vh]));
+            //    }
+
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        opt += OpenMesh::IO::Options::FaceColor;
+            //        opt += OpenMesh::IO::Options::VertexColor;
+            //        //OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) + "_FWN.off", opt);
+            //    }
+
+            //}
+
+            auto edgeCrossesFWNField = [&](OpenMesh::SmartEdgeHandle eh,
+                const std::shared_ptr<tFWN>& acc,
+                double iso = 0.5,
+                int sampleCount = 16,
+                double eps = 1e-3) -> bool
+                {
+                    if (!acc || !eh.is_valid() || eh.deleted())
+                    {
+                        return false;
+                    }
+
+                    sampleCount = std::max(sampleCount, 2);
+
+                    const auto p0 = m_mesh.point(eh.v0());
+                    const auto p1 = m_mesh.point(eh.v1());
+
+                    auto eval = [&](double t) -> double
+                        {
+                            const auto p = p0 + (p1 - p0) * static_cast<tScalar>(t);
+                            return acc->windingNumber(p) - iso;
+                        };
+
+                    double prev = eval(0.0);
+                    double minG = prev;
+                    double maxG = prev;
+
+                    //if (std::fabs(prev) <= eps)
+                    //{
+                    //    return true;
+                    //}
+
+                    for (int i = 1; i <= sampleCount; ++i)
+                    {
+                        const double t = static_cast<double>(i) / static_cast<double>(sampleCount);
+                        const double g = eval(t);
+
+                        minG = std::min(minG, g);
+                        maxG = std::max(maxG, g);
+
+                        if (std::fabs(g) <= eps)
+                        {
+                            return true;
+                        }
+
+                        if ((prev < -eps && g > eps) || (prev > eps && g < -eps))
+                        {
+                            return true;
+                        }
+
+                        prev = g;
+                    }
+
+                    // catches even number of crossings when endpoints are on same side
+                    return (minG < -eps && maxG > eps);
+                };
+
+            double smallAngle = M_PI / 16.0;
+            double limitAngleCos = std::cos(smallAngle);
+
+
+            auto calcOppositeAngle = [this](tHalfedgeHandle he)
+                {
+
+                    if (m_mesh.is_boundary(he))
+                    {
+                        return (double)std::nan("");
+                    }
+
+                    auto u = m_mesh.point(m_mesh.to_vertex_handle(he));
+                    auto v = m_mesh.point(m_mesh.from_vertex_handle(he));
+                    auto p = m_mesh.point(m_mesh.to_vertex_handle(m_mesh.next_halfedge_handle(he)));
+
+                    auto up = u - p;
+                    up.normalize();
+                    auto vp = v - p;
+                    vp.normalize();
+
+                    auto q = (double)OpenMesh::dot(up, vp);
+                    q = std::clamp(q, -1.0, 1.0);
+
+                    return q;
+                };
+
+            auto opposingAnglesAreGreaterThanCheck = [&](tEdgeHandle eh)
+                {
+                    assert(sanityCheck(m_mesh, eh));
+
+                    auto seh = OpenMesh::make_smart(eh, m_mesh);
+
+                    typename MeshType::Scalar angle0 = calcOppositeAngle(seh.h0());
+                    typename MeshType::Scalar angle1 = calcOppositeAngle(seh.h1());
+
+                    return (!m_mesh.is_boundary(seh.h0()) && angle0 < limitAngleCos)
+                        && (!m_mesh.is_boundary(seh.h1()) && angle1 < limitAngleCos);
+                };
+
+            auto checkEdgeSplit = [&](OpenMesh::SmartEdgeHandle eh)
+                {
+                    if (intersectionVertex[eh.v0()] && intersectionVertex[eh.v1()])
+                    {
+                        return;
+                    }
+
+                    const auto& p0 = m_mesh.point(eh.v0());
+                    const auto& p1 = m_mesh.point(eh.v1());
+
+                    const auto wn0 = (intersectionVertex[eh.v0()] || pNewVh[eh.v0()]) ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[eh.v0()];
+                    const auto wn1 = (intersectionVertex[eh.v1()] || pNewVh[eh.v1()]) ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[eh.v1()];
+
+                    //const double midFWN = acc->windingNumber(p0 + p1 * 0.5);
+
+                    if ((wn0 - 0.5) * (wn1 - 0.5) < 0 /*&& opposingAnglesAreGreaterThanCheck(eh)*/ /*&& std::fabs(midFWN -0.5) > 1e-2*//*&& std::fabs(wn0 - wn1) > 1e-2*/)
+                    {
+                        //m_mesh.set_color(eh.v0(), (wn0 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
+                        //m_mesh.set_color(eh.v1(), (wn1 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
+
+                        pEdgeToSplit[eh] = true;
+                        edgesToSplit.insert(eh);
+                    }
+                };
+
+            assigneIntersectionCurveIds();
+
+            for (auto fh : component)
+            {
+                //if (intersectionFace[fh])
+                //{
+                //    continue;
+                //}
+
+                //intersection faces are treat in a different manner - check the remaining, non intersecting vertex, if it's exact classification is different then
+                //FWN field classification, split the edges connecting it to the exact intersection vertices
+                if (intersectionFace[fh])
+                {
+                    bool isInsideExact = labeling[fh][other.m_intLabel] == 1;
+                    bool needsSplit = false;
+                    for (auto fvh : OpenMesh::make_smart(fh, m_mesh).vertices())
+                    {
+                        if (intersectionVertex[fvh] || needsSplit)
+                        {
+                            continue;
+                        }
+
+                        bool isInsideFWN = pFWN[fvh] > 0.5;
+
+                        //should be only one such vertex
+                        needsSplit = isInsideFWN != isInsideExact;
+                    }
+
+
+                    if (needsSplit)
+                    {
+                        for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+                        {
+                            if (pIntersectionEdge[eh])
+                            {
+                                continue;
+
+                            }
+
+                            pEdgeToSplit[eh] = true;
+                            edgesToSplit.insert(eh);
+                        }
+                    }
+
+                    //long triangles connecting two separate intersection areas
+                    for (auto feh : OpenMesh::make_smart(fh, m_mesh).edges())
+                    {
+                        //const double midFWN = acc->windingNumber((m_mesh.point(feh.h0().from()) + m_mesh.point(feh.h0().to())) * 0.5);
+
+                        //if (!pIntersectionEdge[feh] && intersectionVertex[feh.v0()] && intersectionVertex[feh.v1()] /*&& std::fabs(midFWN -0.5) > 1e-3*/)
+                        //{
+
+                        //    pEdgeToSplit[feh] = true;
+                        //    edgesToSplit.insert(feh);
+                        //}
+
+
+                        if (!pIntersectionEdge[feh] && intersectionVertex[feh.v0()] && intersectionVertex[feh.v1()] && pIntersectionCurveId[feh.v0()] != pIntersectionCurveId[feh.v1()])
+                        {
+
+                            pEdgeToSplit[feh] = true;
+                            edgesToSplit.insert(feh);
+                        }
+                    }
+                }
+                else
+                {
+                    for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+                    {
+                        checkEdgeSplit(eh);
+                    }
+                }
+            }
+
+
+            auto lastFaceId = m_mesh.faces_end()->idx();
+            std::vector<OpenMesh::SmartVertexHandle> newVertices;
+            std::vector<OpenMesh::SmartFaceHandle> newFaces;
+
+            for (auto eh : edgesToSplit)
+            {
+                if (!eh.is_valid() || m_mesh.status(eh).deleted())
+                {
+                    continue;
+                }
+
+                auto sEh = OpenMesh::make_smart(eh, m_mesh);
+                const auto baseVh0 = sEh.v0();
+                const auto baseVh1 = sEh.v1();
+                const auto baseP0 = m_mesh.point(baseVh0);
+                const auto baseP1 = m_mesh.point(baseVh1);
+                const auto edgeWn0 = intersectionVertex[baseVh0] ? acc->windingNumber(baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(0.01)) : pFWN[baseVh0];
+                const auto edgeWn1 = intersectionVertex[baseVh1] ? acc->windingNumber(baseP1 + (baseP0 - baseP1) * static_cast<tScalar>(0.01)) : pFWN[baseVh1];
+                const bool edgeHasCrossingInCutField = ((edgeWn0 - 0.5) * (edgeWn1 - 0.5)) < 0.0;
+
+                auto evalFWNAtT = [&](double t) -> double
+                {
+                    const auto p = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
+                    return acc->windingNumber(p);
+                };
+
+                const double endpointShift = 1e-4;
+                const double tStart = intersectionVertex[baseVh0] ? endpointShift : 0.0;
+                const double tEnd = intersectionVertex[baseVh1] ? (1.0 - endpointShift) : 1.0;
+
+                if (tEnd <= tStart)
+                {
+                    continue;
+                }
+
+                struct tBracket
+                {
+                    double a;
+                    double b;
+                    double fa;
+                    double fb;
+                };
+
+                std::vector<tBracket> brackets;
+                std::vector<double> splitParams;
+                const int sampleCount = 16;
+                const double rootEps = 1e-6;
+
+                double prevT = tStart;
+                double prevF = evalFWNAtT(prevT) - 0.5;
+
+                if (std::fabs(prevF) < rootEps)
+                {
+                    splitParams.push_back(prevT);
+                }
+
+                for (int si = 1; si <= sampleCount; ++si)
+                {
+                    const double currT = tStart + (tEnd - tStart) * (static_cast<double>(si) / sampleCount);
+                    const double currF = evalFWNAtT(currT) - 0.5;
+
+                    if (std::fabs(currF) < rootEps)
+                    {
+                        splitParams.push_back(currT);
+                    }
+
+                    if ((prevF * currF) < 0.0)
+                    {
+                        brackets.push_back({ prevT, currT, prevF, currF });
+                    }
+
+                    prevT = currT;
+                    prevF = currF;
+                }
+
+                for (const auto& br : brackets)
+                {
+                    double left = br.a;
+                    double right = br.b;
+                    double fLeft = br.fa;
+                    double fRight = br.fb;
+                    double tRoot = 0.5 * (left + right);
+                    int lastSide = 0;
+
+                    for (int i = 0; i < 8; ++i)
+                    {
+                        const double fpDenom = (fRight - fLeft);
+                        if (std::fabs(fpDenom) <= 1e-12)
+                        {
+                            break;
+                        }
+
+                        const double x = (left * fRight - right * fLeft) / fpDenom;
+                        const double fX = evalFWNAtT(x) - 0.5;
+                        tRoot = x;
+
+                        if (std::fabs(fX) < rootEps)
+                        {
+                            break;
+                        }
+
+                        if ((fLeft * fX) < 0.0)
+                        {
+                            right = x;
+                            fRight = fX;
+                            if (lastSide == -1)
+                            {
+                                fLeft *= 0.5;
+                            }
+                            lastSide = -1;
+                        }
+                        else if ((fRight * fX) < 0.0)
+                        {
+                            left = x;
+                            fLeft = fX;
+                            if (lastSide == 1)
+                            {
+                                fRight *= 0.5;
+                            }
+                            lastSide = 1;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    splitParams.push_back(tRoot);
+                }
+
+                if (splitParams.empty())
+                {
+                    if (edgeHasCrossingInCutField)
+                    {
+                        const double denom = edgeWn1 - edgeWn0;
+                        if (std::fabs(denom) > 1e-12)
+                        {
+                            splitParams.push_back((0.5 - edgeWn0) / denom);
+                        }
+                        else
+                        {
+                            splitParams.push_back(0.5);
+                        }
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+
+                std::sort(splitParams.begin(), splitParams.end());
+                splitParams.erase(std::unique(splitParams.begin(), splitParams.end(),
+                    [](double a, double b) { return std::fabs(a - b) < 1e-6; }), splitParams.end());
+
+                splitParams.erase(std::remove_if(splitParams.begin(), splitParams.end(),
+                    [](double t) { return t <= 1e-6 || t >= 1.0 - 1e-6; }), splitParams.end());
+
+                if (splitParams.empty())
+                {
+                    continue;
+                }
+
+                auto currentSplitEdge = sEh;
+                const auto endVh = baseVh1;
+
+                for (size_t splitIdx = 0; splitIdx < splitParams.size(); ++splitIdx)
+                {
+                    const auto originalFh0 = currentSplitEdge.h0().face();
+                    const auto originalFh1 = currentSplitEdge.h1().face();
+
+                    const auto vh0 = currentSplitEdge.v0();
+                    const auto vh1 = currentSplitEdge.v1();
+                    auto vr = currentSplitEdge.h0().next().to();
+                    auto vl = currentSplitEdge.h1().next().to();
+
+                    const auto& p0 = m_mesh.point(vh0);
+                    const auto& p1 = m_mesh.point(vh1);
+
+                    const auto wn0 = intersectionVertex[vh0] ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[vh0];
+                    const auto wn1 = intersectionVertex[vh1] ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[vh1];
+
+                    double t = splitParams[splitIdx];
+                    if (t < 1e-6)
+                    {
+                        t = 1e-6;
+                    }
+                    else if (t > 1.0 - 1e-6)
+                    {
+                        t = 1.0 - 1e-6;
+                    }
+
+                    const auto splitPos = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
+
+                    auto newVh = m_mesh.split(currentSplitEdge, splitPos);
+
+                    pNewVh[newVh] = true;
+                    pRawFWN[newVh] = acc->windingNumber(splitPos);
+                    pFWN[newVh] = 0.5;
+
+                    uint newMAVhId = ma.addVertex(splitPos[0], splitPos[1], splitPos[2]);
+                    uint newLocalVhId = addVertex(splitPos[0], splitPos[1], splitPos[2], newMAVhId);
+                    pVhToMaVId[newVh] = newLocalVhId;
+
+                    newVertices.push_back(newVh);
+
+                    for (auto fh : newVh.faces())
+                    {
+                        //TODO: this can remove the original intersection face - add he labeling
+                        intersectionFace[fh] = false;
+
+
+                        std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
+
+                        //update
+                        if (fh == originalFh0 || fh == originalFh1)
+                        {
+                            updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                            ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
+                            newFaces.push_back(fh);
+
+                        }
+                        //add new
+                        else
+                        {
+                            std::bitset<NBIT> thisMeshLabel = 0;
+                            thisMeshLabel[m_intLabel] = 1;
+
+                            uint newLocalTId = addNewFace(pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                            uint newMAFhId = ma.addNewFace(m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]], thisMeshLabel);
+                            pFhToMaFh[fh] = newLocalTId;
+
+                            //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
+                            m_tIdToOriginalTId.push_back(newMAFhId);
+
+                            //directly modify the original component
+                            componentCopy.push_back(fh);
+                            newFaces.push_back(fh);
+                        }
+                    }
+
+                    //for (auto he : newVh.outgoing_halfedges())
+                    //{
+                    //    if (he.to() == vl || he.to() == vr)
+                    //    {
+                    //        if (edgeCrossesFWNField(he.edge(), acc))
+                    //        {
+                    //            //pEdgeToSplit[he.edge()] = true;
+                    //            //edgesToSplit.insert(he.edge());
+                    //            edgesToFlip.insert(he.edge());
+                    //        }
+                    //    }
+                    //    
+                    //}
+
+                    if (splitIdx + 1 < splitParams.size())
+                    {
+                        bool foundNext = false;
+                        for (auto nextEh : newVh.edges())
+                        {
+                            auto sNextEh = OpenMesh::make_smart(nextEh, m_mesh);
+                            if ((sNextEh.v0() == newVh && sNextEh.v1() == endVh) || (sNextEh.v1() == newVh && sNextEh.v0() == endVh))
+                            {
+                                currentSplitEdge = sNextEh;
+                                foundNext = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundNext)
+                        {
+                            break;
+                        }
+                    }
+
+                    //for (auto eh : newVh.edges())
+                    //{
+                    //    if (eh == currentSplitEdge)
+                    //    {
+                    //        continue;
+                    //    }
+
+                    //    checkEdgeSplit(eh);
+                    //}
+
+                    //{
+                    //    MeshType meshPart;
+                    //    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, debugComponent, true);
+                    //    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                    //    opt += OpenMesh::IO::Options::FaceColor;
+
+                    //    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_cmp_" + std::to_string(m_intLabel) + "_afterSplit.obj", opt);
+                    //}
+
+                }
+            }
+
+            
+
+            //TODO: enforce iso contour
+            auto updateFaceInMA = [&](OpenMesh::SmartFaceHandle fh)
+                {
+                    if (!fh.is_valid() || fh.deleted())
+                    {
+                        return;
+                    }
+
+                    auto faceVertices = fh.vertices().to_vector();
+                    updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+                    ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
+                };
+
+
+
+            auto numericalGradient = [&acc](const tPoint& p, double eps = 1e-5) -> tPoint
+                {
+                    //const double eps = 1e-5;
+
+                    double dx = acc->windingNumber(tPoint(p[0] + eps, p[1], p[2])) -
+                        acc->windingNumber(tPoint(p[0] - eps, p[1], p[2]));
+
+                    double dy = acc->windingNumber(tPoint(p[0], p[1] + eps, p[2])) -
+                        acc->windingNumber(tPoint(p[0], p[1] - eps, p[2]));
+
+                    double dz = acc->windingNumber(tPoint(p[0], p[1], p[2] + eps)) -
+                        acc->windingNumber(tPoint(p[0], p[1], p[2] - eps));
+
+                    tPoint grad(dx, dy, dz);
+                    grad.normalize();
+                    return grad;
+                };
+
+            std::unordered_set<tEdgeHandle> edgesToFlip;
+
+
+            for (auto newVh : newVertices)
+            {
+                for (auto eh : newVh.edges())
+                {
+                    if (m_mesh.status(eh).deleted() || !eh.is_valid() || eh.is_boundary())
+                    {
+                        continue;
+                    }
+
+                    edgesToFlip.insert(eh);
+                }
+            }
+
+            auto faceNormal = [this](tVertexHandle v0, tVertexHandle v1, tVertexHandle v2)
+                {
+                    const auto& p0 = m_mesh.point(v0);
+                    const auto& p1 = m_mesh.point(v1);
+                    const auto& p2 = m_mesh.point(v2);
+
+                    auto n = (p1 - p0) % (p2 - p0); // cross
+                    n.normalize();
+                    return n;
+                };
+
+            auto normalsCheck = [this, &faceNormal](OpenMesh::SmartEdgeHandle eh)
+                {
+                    auto v0 = eh.h0().to();
+                    auto v1 = eh.h1().to();
+                    auto vr = eh.h0().next().to();
+                    auto vl = eh.h1().next().to();
+
+                    auto fn0Before = m_mesh.calc_normal(eh.h0().face());
+                    auto fn1Before = m_mesh.calc_normal(eh.h1().face());
+
+                    //cw flip simulation
+                    auto fn0After = faceNormal(vr, vl, v0);
+                    auto fn1After = faceNormal(vl, vr, v1);
+
+                    return OpenMesh::dot(fn0Before, fn0After) > 0 && OpenMesh::dot(fn1Before, fn1After) > 0;
+
+                };
+
+
+
+            for (auto eh : edgesToFlip)
+            {
+                auto sEh = OpenMesh::make_smart(eh, m_mesh);
+                auto h0 = sEh.h0();
+                auto h1 = sEh.h1();
+                auto f0 = h0.face();
+                auto f1 = h1.face();
+
+                if (pIntersectionEdge[eh])
+                {
+                    continue;
+                }
+
+                if (!m_mesh.is_flip_ok(eh))
+                {
+                    continue;
+                }
+
+                if (edgeIsDelaunay(m_mesh, eh))
+                {
+                    continue;
+                }
+
+                //if (!normalsCheck(sEh))
+                //{
+                //    continue;
+                //}
+
+                m_mesh.flip(eh);
+                updateFaceInMA(f0);
+                updateFaceInMA(f1);
+            }
+
+            OpenMesh::EProp<bool> edgeClassifed(false, m_mesh);
+            OpenMesh::FProp<bool> faceClassifed(false, m_mesh);
+
+            makeUniqueVector(componentCopy);
+
+            //reaply original labelings
+            for (auto fh : componentCopy)
+            {
+                intersectionFace[fh] = false;
+
+                for (auto he : OpenMesh::make_smart(fh, m_mesh).halfedges())
+                {
+                    if (intersectionHe[he])
+                    {
+                        intersectionFace[fh] = true;
+                        pIntersectionEdge[he.edge()] = true;
+                        labeling[fh] = originalLabeling[he];
+                        faceClassifed[fh] = true;
+                    }
+                }
+            }
+
+
+
+#if 0
+            OpenMesh::EProp<bool> edgeProcessed(false, m_mesh);
+
+            for (auto newVh : newVertices)
+            {
+                //for (auto he : newVh.outgoing_halfedges())
+                for (auto eh : newVh.edges())
+                {
+                    //if (!he.face().is_valid() || he.face().deleted())
+                    //{
+                    //    continue;
+                    //}
+
+                    //if (faceClassifed[he.face()] && faceClassifed[he.opp().face()])
+                    //{
+                    //    continue;
+                    //}
+
+                    if (edgeProcessed[eh])
+                    {
+                        continue;
+                    }
+
+                    auto v0 = eh.v0();
+                    auto v1 = eh.v1();
+
+                    const bool cand = (pNewVh[v0] && pNewVh[v1]) || 
+                        (pNewVh[v0] && intersectionVertex[v1] && intersectionValance[v1] == 1) ||
+                        (pNewVh[v1] && intersectionVertex[v0] && intersectionValance[v0] == 1);
+
+                    //TODO: WHY IS THIS CONDITION NOT WORKING??
+                    //if ((pNewVh[he.to()]) || (intersectionVertex[he.to()] && intersectionValance[he.to()] == 1))
+                    if (cand)
+                    {
+                        intersectionVertex[v0] = true;
+                        intersectionVertex[v1] = true;
+                        pIntersectionEdge[eh] = true;
+
+                        std::bitset<NBIT> thisFaceLabel = 0;
+
+                        //auto classifyingVh = he.next().to();
+                        //const auto& p0 = m_mesh.point(classifyingVh);
+                        //const auto& p1 = m_mesh.point(newVh);
+                        //const double wn = (intersectionVertex[classifyingVh] || pNewVh[classifyingVh]) ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.5)) : pFWN[classifyingVh];
+                        //thisFaceLabel[other.m_intLabel] = wn > 0.5; //inside of other mesh
+
+                        auto f0 = eh.h0().face();
+                        if (f0.is_valid())
+                        {
+                            thisFaceLabel[other.m_intLabel] = acc->inside(m_mesh.calc_face_centroid(f0));
+                            labeling[f0] = thisFaceLabel;
+                            faceClassifed[f0] = true;
+                            intersectionFace[f0] = true;
+                        }
+
+                        auto f1 = eh.h1().face();
+                        if(f1.is_valid())
+                        {
+                            thisFaceLabel = 0;
+                            thisFaceLabel[other.m_intLabel] = acc->inside(m_mesh.calc_face_centroid(f1));
+                            labeling[f1] = thisFaceLabel;
+                            faceClassifed[f1] = true;
+                            intersectionFace[f1] = true;
+
+                        }
+
+                        edgeProcessed[eh] = true;
+                    }
+                }
+            }
+
+            //debug
+            {
+                std::vector<tFaceHandle> problematicFaces;
+                for (auto vh : m_mesh.vertices())
+                {
+                    if (!(intersectionVertex[vh] && intersectionValance[vh] == 1))
+                        continue; // only open-curve endpoints
+
+                    for (auto fh : vh.faces())
+                    {
+                        problematicFaces.push_back(fh);
+                    }
+
+                    std::cout << "\nOPEN endpoint vh=" << vh.idx() << "\n";
+                    for (auto eh : vh.edges())
+                    {
+                        auto v0 = eh.v0();
+                        auto v1 = eh.v1();
+                        auto other = (v0 == vh) ? v1 : v0;
+
+                        const bool cand =
+                            (pNewVh[v0] && pNewVh[v1]) ||
+                            (pNewVh[v0] && intersectionVertex[v1] && intersectionValance[v1] == 1) ||
+                            (pNewVh[v1] && intersectionVertex[v0] && intersectionValance[v0] == 1);
+
+                        std::cout
+                            << "  eh=" << eh.idx()
+                            << " other=" << other.idx()
+                            << " pNew(v0,v1)=(" << pNewVh[v0] << "," << pNewVh[v1] << ")"
+                            << " iV(other)=" << intersectionVertex[other]
+                            << " val(other)=" << intersectionValance[other]
+                            << " cand=" << cand
+                            << "\n";
+                    }
+                }
+
+                makeUniqueVector(problematicFaces);
+
+                MeshType meshPart;
+                DMB::copyMeshPart<MeshType>(m_mesh, meshPart, problematicFaces, true);
+                OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+
+                OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/facesAroundIntersectionEnd.obj", opt);
+
+            }
+
+
+
+            //for (auto fh : newFaces)
+            //{
+            //    if (!fh.is_valid() || fh.deleted())
+            //    {
+            //        continue;
+            //    }
+
+            //    if (faceClassifed[fh])
+            //    {
+            //        continue;
+            //    }
+
+            //    std::bitset<NBIT> thisFaceLabel = 0;
+            //    thisFaceLabel[other.m_intLabel] = acc->inside(m_mesh.calc_face_centroid(fh));
+            //    labeling[fh] = thisFaceLabel;
+            //    faceClassifed[fh] = true;
+            //}
+
+#else
+            std::unordered_set<tFaceHandle> facesToClassify;
+            std::unordered_set<tEdgeHandle> edgesToClassify;
+
+
+            for (auto newVh : newVertices)
+            {
+                for (auto fh : newVh.faces())
+                {
+                    if (faceClassifed[fh] || intersectionFace[fh])
+                    {
+                        continue;
+                    }
+
+                    for (auto eh : fh.edges())
+                    {
+                        facesToClassify.insert(eh.faces().begin(), eh.faces().end());
+                    }
+                }
+            }
+
+            for (auto fh : facesToClassify)
+            {
+                auto sFh = OpenMesh::make_smart(fh, m_mesh);
+                edgesToClassify.insert(sFh.edges().begin(), sFh.edges().end());
+            }
+
+
+            //for (auto newVh : newVertices)
+            {
+                //for (auto fh : newVh.faces())
+                for (auto fh : facesToClassify)
+                {
+                    if (faceClassifed[fh] || intersectionFace[fh])
+                    {
+                        continue;
+                    }
+
+                    std::bitset<NBIT> thisFaceLabel = 0;
+
+                    const double wn = acc->windingNumber(m_mesh.calc_face_centroid(fh));
+                    thisFaceLabel[other.m_intLabel] = wn > 0.5; //inside of other mesh
+
+                    labeling[fh] = thisFaceLabel;
+
+                    faceClassifed[fh] = true;
+
+                }
+            }
+            
+
+
+            //for (auto newVh : newVertices)
+            {
+                //for (auto eh : newVh.edges())
+                for (auto eh : edgesToClassify)
+                {
+                    auto sEh = OpenMesh::make_smart(eh, m_mesh);
+
+                    if (edgeClassifed[sEh])
+                    {
+                        continue;
+                    }
+
+                    pIntersectionEdge[sEh] = false;
+
+                    if (!(sEh.h0().face().is_valid() && sEh.h1().face().is_valid()))
+                    {
+                        continue;
+                    }
+
+                    if (labeling[sEh.h0().face()] != labeling[sEh.h1().face()]/* || (pNewVh[eh.v0()] && pNewVh[eh.v1()])*/)
+                    {
+                        pIntersectionEdge[sEh] = true;
+                        intersectionFace[sEh.h0().face()] = true;
+                        intersectionFace[sEh.h1().face()] = true;
+                        intersectionVertex[sEh.v0()] = true;
+                        intersectionVertex[sEh.v1()] = true;
+                    }
+
+                    edgeClassifed[sEh] = true;
+
+                }
+            }
+#endif
+
+            //debug
+            //intersection lines
+            //{
+            //    std::map<int, int> meshToObjVertexMap;
+            //    int objVertexId = 1;
+            //    std::ofstream lineObj("C:/skola/PhD/VUT/booleans_paper/extension/debug/intEdges" + std::to_string(m_intLabel) + ".obj");
+
+            //    for (auto vh : m_mesh.vertices())
+            //    {
+            //        if (intersectionVertex[vh] || pNewVh[vh])
+            //        {
+            //            meshToObjVertexMap[vh.idx()] = objVertexId;
+
+            //            auto p = m_mesh.point(vh);
+            //            lineObj << "v " << std::to_string(p[0]) << " " << std::to_string(p[1]) << " " << std::to_string(p[2]) << std::endl;
+
+            //            ++objVertexId;
+            //        }
+            //    }
+
+            //    for (auto eh : m_mesh.edges())
+            //    {
+            //        auto v0 = eh.v0();
+            //        auto v1 = eh.v1();
+            //        //const bool cand =
+            //        //    (pNewVh[v0] && intersectionVertex[v1] && intersectionValance[v1] == 1) ||
+            //        //    (pNewVh[v1] && intersectionVertex[v0] && intersectionValance[v0] == 1);
+
+            //        if (pIntersectionEdge[eh])
+            //        {
+            //           
+            //            lineObj << "l " << std::to_string(meshToObjVertexMap[v0.idx()]) << " " << std::to_string(meshToObjVertexMap[v1.idx()]) << std::endl;
+            //        }
+            //    }
+            //}
+
+            //debug
+            //{
+            //    for (auto fh : componentCopy)
+            //    {
+            //        if (m_mesh.status(fh).deleted())
+            //        {
+            //            continue;
+            //        }
+
+            //        m_mesh.set_color(fh, { 128, 128, 128 });
+
+            //        if (intersectionFace[fh])
+            //        {
+            //            typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+            //            m_mesh.set_color(fh, c);
+
+            //        }
+
+            //    }
+            //}
+
+            //TODO: MAKE LAMBDA OUT OF THIS!!!
+            //find components
+            int cntNewComponents = 0;
+            for (auto fh : componentCopy)
+            {
+                if (m_mesh.status(fh).deleted())
+                {
+                    continue;
+                }
+
+                if (coplanarFace[fh])
+                {
+                    continue;
+                }
+
+                //found a new component seed face
+                if (!m_mesh.status(fh).tagged())
+                {
+                    std::queue<tFaceHandle> facesToVisit;
+                    std::vector<tFaceHandle> componentFaces;
+
+                    facesToVisit.push(fh);
+
+                    while (!facesToVisit.empty())
+                    {
+                        //get top face
+                        auto topFace = OpenMesh::make_smart(facesToVisit.front(), m_mesh);
+                        facesToVisit.pop();
+
+                        if (topFace.tagged() || topFace.deleted() || coplanarFace[topFace])
+                        {
+                            continue;
+                        }
+
+
+                        //store new component face
+                        componentFaces.push_back(topFace);
+
+                        //continue with adjacent face, but adjacencies through intersection edges are not allowed
+                        for (auto he : topFace.halfedges())
+                        {
+
+                            if (pIntersectionEdge[he.edge()] || pCoplanarEdge[he.edge()])
+                            {
+                                continue;
+                            }
+
+                            auto adjFace = he.opp().face();
+
+                            if (adjFace.is_valid() && !adjFace.tagged())
+                            {
+                                facesToVisit.push(adjFace);
+                            }
+
+                        }
+
+                        //mark this face as processed
+                        m_mesh.status(topFace).set_tagged(true);
+                    }
+
+                    ////DEBUG
+                    //{
+
+                    //    {
+                    //        MeshType meshPart;
+                    //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentFaces, true);
+
+                    //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                    //        opt += OpenMesh::IO::Options::FaceColor;
+                    //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(cc) + "_after.ply", opt);
+                    //        ++cc;
+                    //    }
+                    //}
+
+                    //store this component
+                    components.push_back(componentFaces);
+
+                    //debug
+                    //{
+                    //    ++cntNewComponents;
+
+                    //    MeshType meshPart;
+                    //    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentFaces, true);
+                    //    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+                    //    opt += OpenMesh::IO::Options::FaceColor;
+                    //   
+
+                    //    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/new_cmp_" + std::to_string(m_intLabel) + "_" +std::to_string(cntNewComponents) +".ply", opt);
+                    //}
+                }
+            }
+
+            //std::cout << "new components: " << cntNewComponents << std::endl;
+
+
+
+
+
+            //updateMatrices();
+
+            //DEBUG
+            //{
+            //    int cc = 0;
+
+            //    for (auto fh : componentCopy)
+            //    {
+            //        if (m_mesh.status(fh).deleted())
+            //        {
+            //            continue;
+            //        }
+
+            //        m_mesh.set_color(fh, { 128, 128, 128 });
+
+            //        if (intersectionFace[fh])
+            //        {
+            //            typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+            //            m_mesh.set_color(fh, c);
+
+            //        }
+
+            //    }
+
+            //    {
+            //        MeshType meshPart;
+            //        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
+            //        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            //        opt += OpenMesh::IO::Options::FaceColor;
+
+            //        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_cmp_" + std::to_string(m_intLabel) + "_after.obj", opt);
+            //    }
+            //}
+
+            //update normals and invaldiate acc accessor
+            //for (auto fh : component)
+            //{
+            //    m_mesh.update_normal(fh);
+            //}
+
+            //m_accAccessor.setDirty();
+
+        };
 
     //mark all intersection vertices
     for (auto eh : m_mesh.edges())
@@ -2148,7 +3486,6 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         }
     }
 
-    OpenMesh::VProp<int> intersectionValance(0, m_mesh);
 
     for (auto vh : m_mesh.vertices())
     {
@@ -2174,9 +3511,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         m_mesh.status(fh).set_tagged(false);
     }
 
-    std::vector<std::vector<tFaceHandle>> components;
-
-    //find components
+    //split this component into new components
     for (auto fh : m_mesh.faces())
     {
         if (fh.deleted())
@@ -2215,8 +3550,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 //continue with adjacent face, but adjacencies through intersection edges are not allowed
                 for (auto he : topFace.halfedges())
                 {
+                    bool fromIsOpen = intersectionVertex[he.from()] && intersectionValance[he.from()] == 1;
+                    bool toIsOpen = intersectionVertex[he.to()] && intersectionValance[he.to()] == 1;
 
-                    if (pIntersectionEdge[he.edge()] || pCoplanarEdge[he.edge()])
+                    if (pIntersectionEdge[he.edge()] || pCoplanarEdge[he.edge()] || 
+                        (fromIsOpen && toIsOpen) /*edges connecting intersection vertices in small cracks, i.e. edges connecting endpoints of an open intersection curve*/)
                     {
                         continue;
                     }
@@ -2239,30 +3577,22 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         }
     }
 
-#if 0
+
+    //reset tagged 
+    for (auto fh : m_mesh.faces())
     {
-        int cc = 0;
-
-        for (const auto& component : components)
-        {
-            MeshType meshPart;
-            DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component);
-
-            OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-            DMB::saveMesh(meshPart, "C:/skola/PhD/Samples/booleans/components/cut_cmp_" + std::to_string(m_intLabel) + "_" + std::to_string(cc) + ".obj", opt);
-            ++cc;
-        }
+        m_mesh.status(fh).set_tagged(false);
     }
-#endif
 
     std::vector<uint> notLabeledComponents;
     std::vector<std::bitset<NBIT>> componentsLabels;
 
     //now spread the labeling information over the connected components
     //for (const auto& component : components)
+    //int maxComponents = components.size();
     for (uint  componentId = 0; componentId < components.size(); ++componentId)
     {
-        const auto& component = components[componentId];
+        auto& component = components[componentId];
 
         //find seed label
         std::bitset<NBIT> seedLabel;
@@ -2319,9 +3649,13 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             notLabeledComponents.push_back(componentId);
             componentsLabels.push_back(notLabeledLabel);
 
+            m_isolatedComponents.push_back(component);
+
             continue;
         }
 
+        //This assumes that the conflict will be resolved, either based on the volume voting or as e-surface. If not, further FWN based splitting will be applied.
+        bool useFloodLabeling = true;
 
         if (conflictingLabeling)
         {
@@ -2347,6 +3681,10 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 double v = 0;
                 for (auto id : componentsId)
                 {
+                    if (id < 0)
+                    {
+                        continue;
+                    }
                     v += ma.m_componentsVolume[id];
                 }
 
@@ -2369,25 +3707,50 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                 if (val == maxVolume && seedLabel != key)
                 {
-                    //still conflicting => e-surface
-                    //conflictingLabeling = true;
-                    //TODO: I should put 0 in place of the input mesh, that labeled this face/component
-                    seedLabel = 0;
+                    //std::cout << "volume:" << val << " label: " << key << " labeling component ids size: " << labelToLabelingComponentMap[key].size() << std::endl;
+
+                    if (std::fabs(val) > 1e-5)
+                    {
+                        //Volume is too big to use e-surface, use further FWN based splitting
+                        useFloodLabeling = false;
+
+                    }
+                    else
+                    {
+                        //still conflicting => e-surface
+                        //conflictingLabeling = true;
+                        //TODO (for variadic): I should put 0 in place of the input mesh, that labeled this face/component
+                        seedLabel = 0;
+                    }
                 }
             }
 
         }
 
-        //set labeling
-        if (!conflictingLabeling)
+        if (useFloodLabeling)
         {
-            for (auto fh : component)
+            //set labeling
+            if (!conflictingLabeling)
             {
-                labeling[fh] = seedLabel;
-            }
+                for (auto fh : component)
+                {
+                    labeling[fh] = seedLabel;
+                }
 
-            componentsLabels.push_back(seedLabel);
+                componentsLabels.push_back(seedLabel);
+            }
         }
+        else
+        {
+            //further FWN based component split
+            FWNBasedComponentSplit(component);
+
+            //TODO: if there are any issues with FWN, enable this line
+            //Strictly speaking this is not neccessary... We have only split some edges/faces - the FWN field did not change at all
+            //m_accAccessor.setDirty();
+        }
+
+        
     }
 
     //reset tagged
@@ -2396,206 +3759,368 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         m_mesh.status(fh).set_tagged(false);
     }
 
-    //deal with dangling not labeled components
-    if (!notLabeledComponents.empty())
+    return true;
+}
+
+template<typename MeshType>
+inline void DMB::MatrixMesh<MeshType>::FWNSplit(const std::vector<tFaceHandle>& component, MeshArrangement<MeshType>& ma, MatrixMesh<MeshType>& other)
+{
+    OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/mesh_before.obj");
+
+    //TODO: THIS IS HIGHLY UNOPTIMAL!!! Use accessor, that rebuilds FWN only once for the whole run...
+    auto acc = other.getFWN();
+
+    auto numericalGradient = [&acc](const tPoint& p, double eps = 1e-5) -> tPoint
+        {
+            //const double eps = 1e-5;
+
+            double dx = acc->windingNumber(tPoint(p[0] + eps, p[1], p[2])) -
+                acc->windingNumber(tPoint(p[0] - eps, p[1], p[2]));
+
+            double dy = acc->windingNumber(tPoint(p[0], p[1] + eps, p[2])) -
+                acc->windingNumber(tPoint(p[0], p[1] - eps, p[2]));
+
+            double dz = acc->windingNumber(tPoint(p[0], p[1], p[2] + eps)) -
+                acc->windingNumber(tPoint(p[0], p[1], p[2] - eps));
+
+            tPoint grad(dx, dy, dz);
+            grad.normalize();
+            return grad;
+        };
+
+
+
+    OpenMesh::VProp<double> pFWN(0.0, m_mesh);
+    OpenMesh::VProp<bool> pNewVh(false, m_mesh);
+    OpenMesh::EProp<bool> pEdgeToSplit(false, m_mesh);
+    OpenMesh::FProp<bool> pFaceToSplit(false, m_mesh);
+
+    OpenMesh::VProp<bool> pIntersectionVertex(m_mesh, m_pIntersectionVertex);
+    OpenMesh::FProp< bool > pIntersectionFace(m_mesh, m_pIntersectionFace);
+    OpenMesh::EProp<bool> pIntersectionEdge(m_mesh, m_pIntersectionEdge);
+    OpenMesh::FProp< std::bitset<NBIT>> labeling(m_mesh, m_pFaceIOLabeling);
+
+    std::unordered_set<tVertexHandle> vertices;
+
+    for (auto fh : component)
     {
-        std::map<uint, uint> maTriangleToComponentMap;
-        std::vector<double> componentsVolume;
-
-        for (uint componentId = 0; componentId < components.size(); ++componentId)
+        for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
         {
-            const auto& component = components[componentId];
-            std::vector<OpenMesh::SmartFaceHandle> smartComponent;
+            vertices.insert(vh);
 
-            for (auto fh : component)
-            {
-                uint maTriangle = m_tIdToOriginalTId[pFhToMaFh[fh]];
-                maTriangleToComponentMap[maTriangle] = componentId;
-                smartComponent.push_back(OpenMesh::make_smart(fh, m_mesh));
-            }
-
-            int sign = calcVolumeSignExact(smartComponent);
-            double volume = calcSignedVolume(smartComponent);
-            double volumeSize = std::abs(volume);
-            componentsVolume.push_back(volumeSize* sign);
         }
+    }
 
-        //first, merge not labeled components
-        std::vector<std::vector<tFaceHandle>> mergedUnlabeledComponents;
-        std::unordered_set<int> visitedComponents;
+    //compute WN
+    for (auto vh : vertices)
+    {
+        pFWN[vh] = acc->windingNumber(m_mesh.point(vh));
+    }
 
-        for (auto componentId : notLabeledComponents)
+    auto checkEdgeSplit = [&](OpenMesh::SmartEdgeHandle eh)
         {
-            if (visitedComponents.find(componentId) != visitedComponents.end())
+            if (pIntersectionVertex[eh.v0()] && pIntersectionVertex[eh.v1()])
             {
-                continue;
+                return;
             }
 
-            const auto& currentComponent = components[componentId];
-            visitedComponents.insert(componentId);
+            const auto& p0 = m_mesh.point(eh.v0());
+            const auto& p1 = m_mesh.point(eh.v1());
 
-            std::vector<tFaceHandle> mergedComponent;
-            std::queue<tFaceHandle> facesToVisit;
+            const auto wn0 = (pIntersectionVertex[eh.v0()] || pNewVh[eh.v0()]) ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[eh.v0()];
+            const auto wn1 = (pIntersectionVertex[eh.v1()] || pNewVh[eh.v1()]) ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[eh.v1()];
 
-            for (auto fh : currentComponent)
+            //const double midFWN = acc->windingNumber(p0 + p1 * 0.5);
+
+            if ((wn0 - 0.5) * (wn1 - 0.5) < 0 /*&& opposingAnglesAreGreaterThanCheck(eh)*/ /*&& std::fabs(midFWN -0.5) > 1e-2*//*&& std::fabs(wn0 - wn1) > 1e-2*/)
             {
-                facesToVisit.push(fh);
+                //m_mesh.set_color(eh.v0(), (wn0 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
+                //m_mesh.set_color(eh.v1(), (wn1 < 0.5 ? typename MeshType::Color{ 255, 0, 0 } : typename MeshType::Color{ 0, 255, 0 }));
+
+                pEdgeToSplit[eh] = true;
             }
+        };
 
-            while(!facesToVisit.empty())
+
+    //gather edges to split
+    for (auto fh : component)
+    {
+        //if (intersectionFace[fh])
+        //{
+        //    continue;
+        //}
+
+        //intersection faces are treat in a different manner - check the remaining, non intersecting vertex, if it's exact classification is different then
+        //FWN field classification, split the edges connecting it to the exact intersection vertices
+        if (pIntersectionFace[fh])
+        {
+            bool isInsideExact = labeling[fh][other.m_intLabel] == 1;
+            bool needsSplit = false;
+            for (auto fvh : OpenMesh::make_smart(fh, m_mesh).vertices())
             {
-                auto topFace = OpenMesh::make_smart(facesToVisit.front(), m_mesh);
-                facesToVisit.pop();
-
-                if (topFace.tagged() || topFace.deleted())
+                if (pIntersectionVertex[fvh] || needsSplit)
                 {
                     continue;
                 }
 
-                //add to this merged component
-                mergedComponent.push_back(topFace);
+                bool isInsideFWN = pFWN[fvh] > 0.5;
 
-                uint maTriangle = m_tIdToOriginalTId[pFhToMaFh[topFace]];
-                auto seedOrigin = ma.m_labels[maTriangle];
-
-                std::vector<uint> faceVertices;
-                faceVertices.reserve(3);
-                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 0]);
-                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 1]);
-                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 2]);
-
-                int e0 = ma.getVertexEdgeId(faceVertices[0], faceVertices[1]);
-                int e1 = ma.getVertexEdgeId(faceVertices[1], faceVertices[2]);
-                int e2 = ma.getVertexEdgeId(faceVertices[2], faceVertices[0]);
-
-                for (auto e : { e0,e1,e2 })
-                {
-                    //TODO: should it be only non manifold edges? maybe not
-                    if (!ma.m_intersectionEdgeProp[e]/* && !ma.isEdgeManifold(e)*/) //this is self-intersecting edge
-                    {
-                        //look at adjacent faces and take their labeling with component volume
-                        for (auto adjFace : ma.getFaceAdjacentEdges(e))
-                        {
-                            //skip different meshes
-                            if (ma.m_labels[adjFace] != seedOrigin)
-                            {
-                                continue;
-                            }
-
-                            auto otherComponentId = maTriangleToComponentMap[adjFace];
-
-                            if (otherComponentId == componentId)
-                            {
-                                continue;
-                            }
-
-                            //skip not labeled component as well
-                            if (componentsLabels[otherComponentId][NBIT - 2] == 1 && visitedComponents.find(otherComponentId) == visitedComponents.end())
-                            {
-                                const auto& otherUnlabeledComponent = components[otherComponentId];
-
-                                for (auto otherCmpFh : otherUnlabeledComponent)
-                                {
-                                    facesToVisit.push(otherCmpFh);
-                                }
-
-                                visitedComponents.insert(otherComponentId);
-                            }
-                        }
-                    }
-                }
-
-
-                //mark this face as processed
-                m_mesh.status(topFace).set_tagged(true);
+                //should be only one such vertex
+                needsSplit = isInsideFWN != isInsideExact;
             }
 
-            mergedUnlabeledComponents.push_back(mergedComponent);
+
+            if (needsSplit)
+            {
+                for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+                {
+                    if (pIntersectionEdge[eh])
+                    {
+                        continue;
+
+                    }
+
+                    pEdgeToSplit[eh] = true;
+                }
+            }
+
+            //long triangles connecting two separate intersection areas
+            for (auto feh : OpenMesh::make_smart(fh, m_mesh).edges())
+            {
+                //const double midFWN = acc->windingNumber((m_mesh.point(feh.h0().from()) + m_mesh.point(feh.h0().to())) * 0.5);
+
+                if (!pIntersectionEdge[feh] && pIntersectionVertex[feh.v0()] && pIntersectionVertex[feh.v1()] /*&& std::fabs(midFWN -0.5) > 1e-3*/)
+                {
+
+                    pEdgeToSplit[feh] = true;
+                }
+            }
+        }
+        else
+        {
+            for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+            {
+                checkEdgeSplit(eh);
+            }
+        }
+    }
+
+    std::unordered_set<tEdgeHandle> edgesToSplit;
+
+    for (auto fh : component)
+    {
+        for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+        {
+            if (pEdgeToSplit[eh])
+            {
+                pFaceToSplit[fh] = true;
+                edgesToSplit.insert(eh);
+            }
+        }
+    }
+
+    std::map < tEdgeHandle, std::vector<tVertexHandle>> edgeToNewVerticesMap;
+
+    for (auto eh : edgesToSplit)
+    {
+        if (!eh.is_valid() || m_mesh.status(eh).deleted())
+        {
+            continue;
         }
 
-        for(const auto& mergedComponent : mergedUnlabeledComponents)
-        {
-            double largestVolume = std::numeric_limits<double>::lowest();
-            int largestNeighbouringComponent = -1;
+        auto sEh = OpenMesh::make_smart(eh, m_mesh);
+        const auto baseVh0 = sEh.v0();
+        const auto baseVh1 = sEh.v1();
+        const auto baseP0 = m_mesh.point(baseVh0);
+        const auto baseP1 = m_mesh.point(baseVh1);
+        const auto edgeWn0 = pIntersectionVertex[baseVh0] ? acc->windingNumber(baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(0.01)) : pFWN[baseVh0];
+        const auto edgeWn1 = pIntersectionVertex[baseVh1] ? acc->windingNumber(baseP1 + (baseP0 - baseP1) * static_cast<tScalar>(0.01)) : pFWN[baseVh1];
+        const bool edgeHasCrossingInCutField = ((edgeWn0 - 0.5) * (edgeWn1 - 0.5)) < 0.0;
 
-            for (auto fh : mergedComponent)
+        auto evalFWNAtT = [&](double t) -> double
             {
-                uint maTriangle = m_tIdToOriginalTId[pFhToMaFh[fh]];
-                auto seedOrigin = ma.m_labels[maTriangle];
+                const auto p = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
+                return acc->windingNumber(p);
+            };
 
-                std::vector<uint> faceVertices;
-                faceVertices.reserve(3);
-                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 0]);
-                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 1]);
-                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 2]);
+        const double endpointShift = 1e-4;
+        const double tStart = pIntersectionVertex[baseVh0] ? endpointShift : 0.0;
+        const double tEnd = pIntersectionVertex[baseVh1] ? (1.0 - endpointShift) : 1.0;
 
-                int e0 = ma.getVertexEdgeId(faceVertices[0], faceVertices[1]);
-                int e1 = ma.getVertexEdgeId(faceVertices[1], faceVertices[2]);
-                int e2 = ma.getVertexEdgeId(faceVertices[2], faceVertices[0]);
+        if (tEnd <= tStart)
+        {
+            continue;
+        }
 
-                for (auto e : { e0,e1,e2 })
+        struct tBracket
+        {
+            double a;
+            double b;
+            double fa;
+            double fb;
+        };
+
+        std::vector<tBracket> brackets;
+        std::vector<double> splitParams;
+        const int sampleCount = 16;
+        const double rootEps = 1e-6;
+
+        double prevT = tStart;
+        double prevF = evalFWNAtT(prevT) - 0.5;
+
+        if (std::fabs(prevF) < rootEps)
+        {
+            splitParams.push_back(prevT);
+        }
+
+        for (int si = 1; si <= sampleCount; ++si)
+        {
+            const double currT = tStart + (tEnd - tStart) * (static_cast<double>(si) / sampleCount);
+            const double currF = evalFWNAtT(currT) - 0.5;
+
+            if (std::fabs(currF) < rootEps)
+            {
+                splitParams.push_back(currT);
+            }
+
+            if ((prevF * currF) < 0.0)
+            {
+                brackets.push_back({ prevT, currT, prevF, currF });
+            }
+
+            prevT = currT;
+            prevF = currF;
+        }
+
+        for (const auto& br : brackets)
+        {
+            double left = br.a;
+            double right = br.b;
+            double fLeft = br.fa;
+            double fRight = br.fb;
+            double tRoot = 0.5 * (left + right);
+            int lastSide = 0;
+
+            for (int i = 0; i < 8; ++i)
+            {
+                const double fpDenom = (fRight - fLeft);
+                if (std::fabs(fpDenom) <= 1e-12)
                 {
-                    if (!ma.m_intersectionEdgeProp[e] /*&& !ma.isEdgeManifold(e)*/) //this is self-intersecting edge
+                    break;
+                }
+
+                const double x = (left * fRight - right * fLeft) / fpDenom;
+                const double fX = evalFWNAtT(x) - 0.5;
+                tRoot = x;
+
+                if (std::fabs(fX) < rootEps)
+                {
+                    break;
+                }
+
+                if ((fLeft * fX) < 0.0)
+                {
+                    right = x;
+                    fRight = fX;
+                    if (lastSide == -1)
                     {
-                        //look at adjacent faces and take their labeling with component volume
-                        for (auto adjFace : ma.getFaceAdjacentEdges(e))
-                        {
-                            //skip different meshes
-                            if (ma.m_labels[adjFace] != seedOrigin)
-                            {
-                                continue;
-                            }
-
-                            auto otherComponentId = maTriangleToComponentMap[adjFace];
-
-                            //if (otherComponentId == componentId)
-                            //{
-                            //    continue;
-                            //}
-
-                            //skip not labeled component as well
-                            if (componentsLabels[otherComponentId][NBIT - 2] == 1)
-                            {
-                                continue;
-                            }
-
-                            auto otherComponentVolume = componentsVolume[otherComponentId];
-
-                            if (otherComponentVolume > largestVolume)
-                            {
-                                largestVolume = otherComponentVolume;
-                                largestNeighbouringComponent = otherComponentId;
-                            }
-                        }
+                        fLeft *= 0.5;
                     }
+                    lastSide = -1;
+                }
+                else if ((fRight * fX) < 0.0)
+                {
+                    left = x;
+                    fLeft = fX;
+                    if (lastSide == 1)
+                    {
+                        fRight *= 0.5;
+                    }
+                    lastSide = 1;
+                }
+                else
+                {
+                    break;
                 }
             }
 
-            if (largestNeighbouringComponent != -1)
-            {
-                auto bestLabel = componentsLabels[largestNeighbouringComponent];
+            splitParams.push_back(tRoot);
+        }
 
-                for (auto fh : mergedComponent)
+        if (splitParams.empty())
+        {
+            if (edgeHasCrossingInCutField)
+            {
+                const double denom = edgeWn1 - edgeWn0;
+                if (std::fabs(denom) > 1e-12)
                 {
-                    labeling[fh] = bestLabel;
+                    splitParams.push_back((0.5 - edgeWn0) / denom);
+                }
+                else
+                {
+                    splitParams.push_back(0.5);
                 }
             }
             else
             {
-                //This is completely isolated component - this needs to be classified via GWN
-                m_isolatedComponents.push_back({ mergedComponent.begin(), mergedComponent.end() });
+                continue;
             }
         }
 
-        //reset tagged
-        for (auto fh : m_mesh.faces())
+        std::sort(splitParams.begin(), splitParams.end());
+        splitParams.erase(std::unique(splitParams.begin(), splitParams.end(),
+            [](double a, double b) { return std::fabs(a - b) < 1e-6; }), splitParams.end());
+
+        splitParams.erase(std::remove_if(splitParams.begin(), splitParams.end(),
+            [](double t) { return t <= 1e-6 || t >= 1.0 - 1e-6; }), splitParams.end());
+
+        if (splitParams.empty())
         {
-            m_mesh.status(fh).set_tagged(false);
+            continue;
         }
 
+        auto currentSplitEdge = sEh;
+        const auto endVh = baseVh1;
+
+        for (size_t splitIdx = 0; splitIdx < splitParams.size(); ++splitIdx)
+        {
+            const auto originalFh0 = currentSplitEdge.h0().face();
+            const auto originalFh1 = currentSplitEdge.h1().face();
+
+            const auto vh0 = currentSplitEdge.v0();
+            const auto vh1 = currentSplitEdge.v1();
+            auto vr = currentSplitEdge.h0().next().to();
+            auto vl = currentSplitEdge.h1().next().to();
+
+            const auto& p0 = m_mesh.point(vh0);
+            const auto& p1 = m_mesh.point(vh1);
+
+            const auto wn0 = pIntersectionVertex[vh0] ? acc->windingNumber(p0 + (p1 - p0) * static_cast<tScalar>(0.01)) : pFWN[vh0];
+            const auto wn1 = pIntersectionVertex[vh1] ? acc->windingNumber(p1 + (p0 - p1) * static_cast<tScalar>(0.01)) : pFWN[vh1];
+
+            double t = splitParams[splitIdx];
+            if (t < 1e-6)
+            {
+                t = 1e-6;
+            }
+            else if (t > 1.0 - 1e-6)
+            {
+                t = 1.0 - 1e-6;
+            }
+
+            const auto splitPos = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
+            auto newVh = m_mesh.add_vertex(splitPos);
+            pNewVh[newVh] = true;
+            pFWN[newVh] = 0.5;
+
+            edgeToNewVerticesMap[eh].push_back(newVh);
+        }
     }
 
-    return true;
+
+
+
+    OpenMesh::IO::write_mesh(m_mesh, "C:/skola/PhD/VUT/booleans_paper/extension/debug/mesh_after.obj");
 }
 
 template<typename MeshType>
@@ -2614,7 +4139,7 @@ inline void DMB::MatrixMesh<MeshType>::classifyIsolatedComponents(MatrixMesh<Mes
     // TODO: REWORK for variadic booleans
 
     //we need to build FWN of the other mesh
-    auto acc = other.getFWN();
+    auto acc = other.getAcceleratorAccessor()->getFastWindingNumber();
 
     static const int nSamples = 10;
 
@@ -2658,17 +4183,17 @@ inline void DMB::MatrixMesh<MeshType>::classifyIsolatedComponents(MatrixMesh<Mes
     }
 }
 
-template<typename MeshType>
-inline std::shared_ptr <typename DMB::MatrixMesh<MeshType>::tFWN> DMB::MatrixMesh<MeshType>::getFWN()
-{
-    // TODO: REWORK for variadic booleans
-
-    m_mesh.update_normals();
-    auto acc = std::make_shared<tFWN>();
-    acc->build(m_mesh);
-
-    return acc;
-}
+//template<typename MeshType>
+//inline std::shared_ptr <typename DMB::MatrixMesh<MeshType>::tFWN> DMB::MatrixMesh<MeshType>::getFWN()
+//{
+//    // TODO: REWORK for variadic booleans
+//
+//    m_mesh.update_normals();
+//    auto acc = std::make_shared<tFWN>();
+//    acc->build(m_mesh);
+//
+//    return acc;
+//}
 
 template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::detectBoundaries()
@@ -2874,6 +4399,39 @@ inline int DMB::MatrixMesh<MeshType>::calcVolumeSignExact(const std::vector<Open
     return calcSignedVolumeExact(component).sgn();
 }
 
+template<typename MeshType>
+inline uint DMB::MatrixMesh<MeshType>::addVertex(double x, double y, double z, uint MAVhId)
+{
+    uint newVhId = (uint)m_coordinatesImplicit.size();
+    m_coordinatesImplicit.push_back(new explicitPoint3D(x, y, z)); //TODO: chech allocation, is it deleted somewhere?
+    m_coordinates.push_back(x);
+    m_coordinates.push_back(y);
+    m_coordinates.push_back(z);
+
+    m_operandToMaVertices[newVhId] = MAVhId;
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline uint DMB::MatrixMesh<MeshType>::addNewFace(uint vh0, uint vh1, uint vh2)
+{
+    uint newVhId = (uint)m_triangles.size() / 3;
+
+    m_triangles.push_back(vh0);
+    m_triangles.push_back(vh1);
+    m_triangles.push_back(vh2);
+
+    return newVhId;
+}
+
+template<typename MeshType>
+inline void DMB::MatrixMesh<MeshType>::updateFace(uint fh, uint vh0, uint vh1, uint vh2)
+{
+    m_triangles[fh * 3 + 0] = vh0;
+    m_triangles[fh * 3 + 1] = vh1;
+    m_triangles[fh * 3 + 2] = vh2;
+}
 
 template<typename MeshType>
 template<typename F>
@@ -2970,7 +4528,6 @@ inline void DMB::MatrixMesh<MeshType>::debug_showMesh(const F& func)
     }
 
     debugMesh.update_normals();
-    T3D_VDT_STORE_NAMED_MESH_AND_WAIT("", debugMesh);
 }
 
 
@@ -2989,6 +4546,8 @@ inline void DMB::MatrixMesh<MeshType>::transferArrangementPropertiesToMesh()
 
     OpenMesh::EProp<bool> pIntersectionEdge(false, m_mesh, "bo_pIntersectionEdge");
     m_pIntersectionEdge = pIntersectionEdge.getRawProperty();
+
+
 
     for (auto fh : m_mesh.faces())
     {
@@ -3016,4 +4575,403 @@ template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::saveMatrixMesh(std::string outputFileName)
 {
     save(outputFileName, m_coordinates, m_triangles);
+}
+
+template<typename MeshType>
+inline std::vector<typename MeshType::FaceHandle> DMB::MatrixMesh<MeshType>::splitAndRelabelComponent(const std::vector<tFaceHandle>& component, double edgeLenghtSplitLimit, MeshArrangement<MeshType>& ma)
+{
+    {
+        MeshType meshPart;
+        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component, true);
+        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+        opt += OpenMesh::IO::Options::FaceColor;
+
+        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_component" + std::to_string(m_intLabel) + "_before_split.ply", opt);
+    }
+
+
+    OpenMesh::EProp<bool> pIntersectionEdge(m_mesh, m_pIntersectionEdge);
+    OpenMesh::FProp< std::bitset<NBIT>> labeling(m_mesh, m_pFaceIOLabeling);
+    OpenMesh::FProp< bool > intersectionFace(m_mesh, m_pIntersectionFace);
+
+    OpenMesh::VProp<bool> pIntersectionVertex(false, m_mesh);
+    OpenMesh::VProp<bool> pNewVertex(false, m_mesh);
+    OpenMesh::HProp<std::bitset<NBIT>> originalLabeling(0, m_mesh);
+    OpenMesh::HProp<bool> intersectionHe(false, m_mesh);
+    OpenMesh::EProp<tScalar> edgeLengths(0, m_mesh);
+
+    for (auto eh : m_mesh.edges())
+    {
+        if (pIntersectionEdge[eh])
+        {
+            auto v0 = eh.v0();
+            auto v1 = eh.v1();
+            pIntersectionVertex[v0] = true;
+            pIntersectionVertex[v1] = true;
+        }
+    }
+
+    //copy original label to hes
+    for (auto fh : component)
+    {
+        for (auto he : OpenMesh::make_smart(fh, m_mesh).halfedges())
+        {
+            if (pIntersectionEdge[he.edge()])
+            {
+                intersectionHe[he] = true;
+                originalLabeling[he] = labeling[he.face()];
+            }
+        }
+    }
+
+
+
+
+    auto longestEdgeFirst = [&](tEdgeHandle eh0, tEdgeHandle eh1) {return edgeLengths[eh0] > edgeLengths[eh1]; };
+    
+    std::priority_queue<tEdgeHandle, std::vector<tEdgeHandle>, decltype(longestEdgeFirst)> q(longestEdgeFirst);
+
+  
+
+    double smallAngle = M_PI / 12.0;
+    double limitAngleCos = std::cos(smallAngle);
+
+    //TODO: move 
+    auto calcOppositeAngle = [this](tHalfedgeHandle he)
+        {
+
+            if (m_mesh.is_boundary(he))
+            {
+                return (double)std::nan("");
+            }
+
+            auto u = m_mesh.point(m_mesh.to_vertex_handle(he));
+            auto v = m_mesh.point(m_mesh.from_vertex_handle(he));
+            auto p = m_mesh.point(m_mesh.to_vertex_handle(m_mesh.next_halfedge_handle(he)));
+
+            auto up = u - p;
+            up.normalize();
+            auto vp = v - p;
+            vp.normalize();
+
+            auto q = (double)OpenMesh::dot(up, vp);
+            q = std::clamp(q, -1.0, 1.0);
+
+            return q;
+        };
+
+    auto opposingAnglesAreGreaterThanCheck = [&](tEdgeHandle eh)
+        {
+            assert(sanityCheck(m_mesh, eh));
+
+            auto seh = OpenMesh::make_smart(eh, m_mesh);
+
+            typename MeshType::Scalar angle0 = calcOppositeAngle(seh.h0());
+            typename MeshType::Scalar angle1 = calcOppositeAngle(seh.h1());
+
+            return (!m_mesh.is_boundary(seh.h0()) && angle0 < limitAngleCos)
+                && (!m_mesh.is_boundary(seh.h1()) && angle1 < limitAngleCos);
+        };
+
+    auto faceNormal = [this](tVertexHandle v0, tVertexHandle v1, tVertexHandle v2)
+        {
+            const auto& p0 = m_mesh.point(v0);
+            const auto& p1 = m_mesh.point(v1);
+            const auto& p2 = m_mesh.point(v2);
+
+            auto n = (p1 - p0) % (p2 - p0); // cross
+            n.normalize();
+            return n;
+        };
+
+    auto normalsCheck = [this, &faceNormal, &limitAngleCos](OpenMesh::SmartEdgeHandle eh)
+        {
+            auto v0 = eh.h0().to();
+            auto v1 = eh.h1().to();
+            auto vr = eh.h0().next().to();
+            auto vl = eh.h1().next().to();
+
+            auto fn0Before = m_mesh.calc_normal(eh.h0().face());
+            auto fn1Before = m_mesh.calc_normal(eh.h1().face());
+
+            //cw flip simulation
+            auto fn0After = faceNormal(vr, vl, v0);
+            auto fn1After = faceNormal(vl, vr, v1);
+
+            return OpenMesh::dot(fn0Before, fn0After) > limitAngleCos && OpenMesh::dot(fn1Before, fn1After) > limitAngleCos;
+
+        };
+
+    //gather edges to refine
+    //TODO: the use of this unordered_set is really unideal...
+    std::unordered_set<tEdgeHandle> edges;
+
+    for (auto fh : component)
+    {
+        for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+        {
+            edges.insert(eh);
+        }
+    }
+
+    //update edge lengths
+    for (auto eh : edges)
+    {
+        edgeLengths[eh] = m_mesh.calc_edge_length(eh);
+    }
+
+    auto componentCopy = component;
+    
+    //std::vector<OpenMesh::SmartVertexHandle> newVertices;
+
+    //split
+    for (int i = 0; i < 5; ++i)
+    {
+        for (auto eh : edges)
+        {
+            if (m_mesh.status(eh).deleted() || !eh.is_valid())
+            {
+                continue;
+            }
+
+            if (edgeLengths[eh] > edgeLenghtSplitLimit)
+            {
+                q.push(eh);
+            }
+        }
+
+        while (!q.empty())
+        {
+            auto eh = OpenMesh::make_smart(q.top(), m_mesh);
+            q.pop();
+
+            if (eh.deleted() || !eh.is_valid())
+            {
+                continue;
+            }
+
+            if (pIntersectionEdge[eh])
+            {
+                continue;
+            }
+
+            if (!opposingAnglesAreGreaterThanCheck(eh))
+            {
+                continue;
+            }
+
+            auto newVh = splitEdge(eh, (m_mesh.point(eh.h0().from()) + m_mesh.point(eh.h0().to())) * 0.5, ma);
+            //newVertices.push_back(OpenMesh::make_smart(newVh, m_mesh));
+            pNewVertex[newVh] = true;
+
+            //update edge lengths
+            for (auto newEh : OpenMesh::make_smart(newVh, m_mesh).edges())
+            {
+                pIntersectionEdge[newEh] = false;
+                edgeLengths[newEh] = m_mesh.calc_edge_length(newEh);
+            }
+
+            //update component
+            for (auto newFh : OpenMesh::make_smart(newVh, m_mesh).faces())
+            {
+                componentCopy.push_back(newFh);
+            }
+
+            //update q
+            //for (auto newEh : OpenMesh::make_smart(newVh, m_mesh).edges())
+            //{
+            //    if (edgeLengths[newEh] > edgeLenghtSplitLimit)
+            //    {
+            //        q.push(newEh);
+            //    }
+            //}
+        }
+
+        //flip
+        edges.clear();
+
+        for (auto fh : componentCopy)
+        {
+            if (m_mesh.status(fh).deleted() || !fh.is_valid())
+            {
+                continue;
+            }
+
+            for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+            {
+                edges.insert(eh);
+            }
+        }
+
+        for (auto eh : edges)
+        {
+            auto sEh = OpenMesh::make_smart(eh, m_mesh);
+            auto v0 = sEh.h0().to();
+            auto v1 = sEh.h1().to();
+            auto vr = sEh.h0().next().to();
+            auto vl = sEh.h1().next().to();
+
+            if ((m_mesh.point(vl) - m_mesh.point(vr)).length() < edgeLengths[eh] && pNewVertex[vl] && pNewVertex[vr])
+            {
+                q.push(eh);
+            }
+        }
+
+        while (!q.empty())
+        {
+            auto eh = OpenMesh::make_smart(q.top(), m_mesh);
+            q.pop();
+
+            if (eh.deleted() || !eh.is_valid())
+            {
+                continue;
+            }
+
+            if (pIntersectionEdge[eh])
+            {
+                continue;
+            }
+
+            if (!m_mesh.is_flip_ok(eh) || !normalsCheck(eh))
+            {
+                continue;
+            }
+
+            m_mesh.flip(eh);
+
+            //update edge length
+            edgeLengths[eh] = m_mesh.calc_edge_length(eh);
+
+        }
+
+        //TODO; rework this ffs, just tag edges, or something...
+        //collapse
+        edges.clear();
+
+        for (auto fh : componentCopy)
+        {
+            if (m_mesh.status(fh).deleted() || !fh.is_valid())
+            {
+                continue;
+            }
+
+            for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
+            {
+                edges.insert(eh);
+            }
+        }
+
+        //use shortes first queue
+        for (auto eh : edges)
+        {
+            auto sEh = OpenMesh::make_smart(eh, m_mesh);
+            if (!pIntersectionEdge[eh] && m_mesh.is_collapse_ok(sEh.h0()) && edgeLengths[eh] < 1e-1) //TODO: OR SMALL ANGLE!
+            {
+                m_mesh.collapse(sEh.h0());
+            }
+        }
+
+
+        {
+            MeshType meshPart;
+            DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
+            OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+            opt += OpenMesh::IO::Options::FaceColor;
+
+            OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/refinement_component" + std::to_string(m_intLabel) + "_" + std::to_string(i) + ".ply", opt);
+        }
+    }
+
+    //clean component vector
+    makeUniqueVector(componentCopy);
+    std::erase_if(componentCopy, [this](tFaceHandle fh) {return m_mesh.status(fh).deleted() || !fh.is_valid(); });
+
+    //splits are done - relabel
+    for (auto fh : componentCopy)
+    {
+        intersectionFace[fh] = false;
+        for (auto he : OpenMesh::make_smart(fh, m_mesh).halfedges())
+        {
+            if (intersectionHe[he])
+            {
+                intersectionFace[fh] = true;
+                labeling[fh] = originalLabeling[he];
+            }
+        }
+    }
+
+
+    //debug
+    for (auto fh : componentCopy)
+    {
+        if (m_mesh.status(fh).deleted())
+        {
+            continue;
+        }
+
+        m_mesh.set_color(fh, { 128, 128, 128 });
+
+        if (intersectionFace[fh])
+        {
+            typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+            m_mesh.set_color(fh, c);
+
+        }
+
+    }
+
+    {
+        MeshType meshPart;
+        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
+        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+        opt += OpenMesh::IO::Options::FaceColor;
+
+        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_component" + std::to_string(m_intLabel) + "_after_split.ply", opt);
+    }
+
+    return componentCopy;
+}
+
+template<typename MeshType>
+inline DMB::MatrixMesh<MeshType>::tVertexHandle DMB::MatrixMesh<MeshType>::splitEdge(tEdgeHandle eh, const tPoint& splitPos, MeshArrangement<MeshType>& ma)
+{
+
+    OpenMesh::FProp<uint> pFhToMaFh(m_mesh, m_pFhToMaFh);
+    OpenMesh::VProp<uint> pVhToMaVId(m_mesh, m_pVhToMaVId);
+
+    const auto originalFh0 = OpenMesh::make_smart(eh, m_mesh).h0().face();
+    const auto originalFh1 = OpenMesh::make_smart(eh, m_mesh).h1().face();
+
+    auto newVh = m_mesh.split(eh, splitPos);
+
+    uint newMAVhId = ma.addVertex(splitPos[0], splitPos[1], splitPos[2]);
+    uint newLocalVhId = addVertex(splitPos[0], splitPos[1], splitPos[2], newMAVhId);
+    pVhToMaVId[newVh] = newLocalVhId;
+
+    for (auto fh : newVh.faces())
+    {
+        std::vector<OpenMesh::SmartVertexHandle> faceVertices = fh.vertices().to_vector();
+
+        //update
+        if (fh == originalFh0 || fh == originalFh1)
+        {
+            updateFace(pFhToMaFh[fh], pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+            ma.updateFace(m_tIdToOriginalTId[pFhToMaFh[fh]], m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]]);
+        }
+        //add new
+        else
+        {
+            std::bitset<NBIT> thisMeshLabel = 0;
+            thisMeshLabel[m_intLabel] = 1;
+
+            uint newLocalTId = addNewFace(pVhToMaVId[faceVertices[0]], pVhToMaVId[faceVertices[1]], pVhToMaVId[faceVertices[2]]);
+            uint newMAFhId = ma.addNewFace(m_operandToMaVertices[pVhToMaVId[faceVertices[0]]], m_operandToMaVertices[pVhToMaVId[faceVertices[1]]], m_operandToMaVertices[pVhToMaVId[faceVertices[2]]], thisMeshLabel);
+            pFhToMaFh[fh] = newLocalTId;
+
+            //TODO: wtf is this?? get rid of this whole m_tIdToOriginalTId mess
+            m_tIdToOriginalTId.push_back(newMAFhId);
+        }
+    }
+
+    return newVh;
 }

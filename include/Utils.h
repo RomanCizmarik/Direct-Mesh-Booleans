@@ -255,4 +255,165 @@ namespace DMB
 
         return w;
     }
+
+
+    template<typename MeshType>
+    void copyMeshPart(const MeshType& srcMesh, MeshType& destMesh, std::vector<typename MeshType::FaceHandle> facesToCopy, bool doGarbageCollection = false)
+    {
+        destMesh = srcMesh;
+
+        auto leaveThisPrimitive = OpenMesh::makeTemporaryProperty<typename MeshType::FaceHandle, bool>(destMesh, "leaveThisPrimitive");
+
+        //handles and indices should be the same in copied mesh
+        for (auto fh : facesToCopy)
+        {
+            leaveThisPrimitive[fh] = true;
+        }
+
+        for (auto fh : destMesh.faces())
+        {
+            if (!leaveThisPrimitive[fh])
+            {
+                destMesh.delete_face(fh, true);
+            }
+        }
+
+        if (doGarbageCollection)
+        {
+            destMesh.garbage_collection();
+        }
+    }
+
+    
+    template<typename MeshType>
+    void copyMeshPart(const MeshType& srcMesh, MeshType& destMesh, std::vector<typename MeshType::EdgeHandle> edgesToCopy, bool doGarbageCollection = false)
+    {
+        destMesh = srcMesh;
+
+        auto leaveThisPrimitive = OpenMesh::makeTemporaryProperty<typename MeshType::EdgeHandle, bool>(destMesh, "leaveThisPrimitive");
+
+        //handles and indices should be the same in copied mesh
+        for (auto eh : edgesToCopy)
+        {
+            leaveThisPrimitive[eh] = true;
+        }
+
+        for (auto eh : destMesh.edges())
+        {
+            if (!leaveThisPrimitive[eh])
+            {
+                destMesh.delete_edge(eh, true);
+            }
+        }
+
+        if (doGarbageCollection)
+        {
+            destMesh.garbage_collection();
+        }
+    }
+
+    
+    template<typename MeshType>
+    void copyMeshPart(const MeshType& srcMesh, MeshType& destMesh, std::vector<typename MeshType::VertexHandle> verticesToCopy, bool doGarbageCollection = false)
+    {
+        destMesh = srcMesh;
+
+        auto leaveThisPrimitive = OpenMesh::makeTemporaryProperty<typename MeshType::VertexHandle, bool>(destMesh, "leaveThisPrimitive");
+
+        //handles and indices should be the same in copied mesh
+        for (auto vh : verticesToCopy)
+        {
+            leaveThisPrimitive[vh] = true;
+        }
+
+        for (auto vh : destMesh.vertices())
+        {
+            if (!leaveThisPrimitive[vh])
+            {
+                destMesh.delete_vertex(vh, true);
+            }
+        }
+
+        if (doGarbageCollection)
+        {
+            destMesh.garbage_collection();
+        }
+    }
+
+    template<typename MeshType>
+    typename MeshType::Scalar calcAverageEdgeLength(const MeshType& mesh)
+    {
+        using tScalar = typename MeshType::Scalar;
+
+        tScalar avgLength(0);
+        std::size_t edgeCount = 0;
+
+        if (mesh.n_edges() == 0)
+        {
+            return avgLength;
+        }
+
+        for (auto eh : mesh.edges())
+        {
+            avgLength += mesh.calc_edge_length(eh);
+            edgeCount++;
+        }
+
+        if (edgeCount)
+        {
+            avgLength /= edgeCount;
+        }
+
+        return avgLength;
+    }
+
+
+
+    template<typename MeshType>
+    double cotan(const MeshType& mesh, OpenMesh::HalfedgeHandle heI)
+    {
+
+        if (mesh.is_boundary(mesh.edge_handle(heI)))
+        {
+            return typename MeshType::Scalar(0);
+        }
+
+        auto sHe = OpenMesh::make_smart(heI, mesh);
+
+        auto he0 = sHe.next();
+        auto he1 = he0.next();
+
+        auto v0 = he0.from();
+        auto v1 = he1.from(); //compute cotan at this vertex
+        auto v2 = sHe.from();
+
+        const auto& p0 = mesh.point(v0);
+        const auto& p1 = mesh.point(v1);
+        const auto& p2 = mesh.point(v2);
+
+        auto edgeVector0 = p0 - p1;
+        auto edgeVector1 = p2 - p1;
+
+        return  dot(edgeVector0, edgeVector1) / DMB::length(cross(edgeVector0, edgeVector1));
+    }
+
+    template<typename MeshType>
+    double  edgeCotanWeight(const MeshType& m, typename MeshType::EdgeHandle eh)
+    {
+        double sum = 0;
+        for (auto he : OpenMesh::make_smart(eh, m).halfedges())
+        {
+            sum += DMB::cotan(m, he);
+        }
+        return sum;
+    };
+
+    template<typename MeshType>
+    bool edgeIsDelaunay(const MeshType& m, typename MeshType::EdgeHandle eh, double delaunayCotanLimit = 1e-6)
+    {
+        double cWeight = DMB::edgeCotanWeight(m, eh);
+        return (cWeight > -delaunayCotanLimit);
+    };
+
+
 } //namespace

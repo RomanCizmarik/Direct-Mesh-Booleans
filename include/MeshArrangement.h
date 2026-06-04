@@ -38,6 +38,11 @@ namespace DMB
         uint getVertexEdgeId(uint v0, uint v1) const;
         bool isEdgeManifold(uint eId) const;
         const std::vector<uint>& getFaceAdjacentEdges(uint eId) const;
+
+        uint addVertex(double x, double y, double z);
+        uint addNewFace(uint vh0, uint vh1, uint vh2, std::bitset<NBIT> origin);
+        void updateFace(uint fh, uint vh0, uint vh1, uint vh2);
+
         //TODO: make this more intelligent...
     public:
         std::vector<double> m_coordinates;

@@ -84,6 +84,10 @@ namespace DMB
         ma.m_multiplier = ma.m_coordinatesImplicit.back()->toExplicit3D().X();
         computeApproximateCoordinates(ma.m_coordinatesImplicit, ma.m_coordinates);
 
+        //pop last five jolly points from MA - TODO: check if they are dealocated
+        for(int i = 0; i < 5; ++i)
+            ma.m_coordinatesImplicit.pop_back();
+
         //leave only the sign from m_multiplier (1 or -1) and add it to the orientation result,
         ma.m_multiplier = ma.m_multiplier / std::abs(ma.m_multiplier);
 
@@ -166,25 +170,34 @@ namespace DMB
             return false;
         }
 
-        left.copyMAProperties(copyMaProps);
-        right.copyMAProperties(copyMaProps);
+        //ma.buildDebugMesh();
 
-        if (!left.disconnectComponents(ma))
+        left.copyMAProperties(copyFunctor);
+        right.copyMAProperties(copyFunctor);
+
+        //left.buildDebugMesh();
+
+        if (!left.disconnectComponents(ma, right))
         {
             return false;
         }
 
-        if (!right.disconnectComponents(ma))
+        if (!right.disconnectComponents(ma, left))
         {
             return false;
         }
+
+        ma.updateMatrices();
 
         left.classifyIsolatedComponents(right);
         right.classifyIsolatedComponents(left);
 
+        //left.buildDebugMesh();
 
         left.classifyMeshArrangement(ma, 0, predicate);
         right.classifyMeshArrangement(ma, 1, predicate);
+
+        //ma.buildDebugMesh();
 
         MatrixMesh<MeshType> result(2, ma,
             [&ma, &predicate](uint tId) -> int
