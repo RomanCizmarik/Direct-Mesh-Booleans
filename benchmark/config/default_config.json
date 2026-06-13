@@ -13,7 +13,6 @@
   },
   "metrics": {
     "sample_count": 10000,
-    "boundary_fscore_tol_frac": 0.001,
     "chamfer_winsorized_upper_percentile": 95.0
   },
   "limits": {

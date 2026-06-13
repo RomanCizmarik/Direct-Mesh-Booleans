@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 try:
     import igl
@@ -767,39 +766,6 @@ def _points_to_mesh_distances(points: np.ndarray, v: np.ndarray, f: np.ndarray) 
     return np.sqrt(sqd_arr)
 
 
-def _pointset_distances(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    if a.size == 0 or b.size == 0:
-        return np.zeros((0,), dtype=np.float64)
-    tree = cKDTree(b)
-    d, _ = tree.query(a, k=1)
-    return np.asarray(d, dtype=np.float64)
-
-
-def boundary_fscore(
-    v_y: np.ndarray,
-    f_y: np.ndarray,
-    v_z: np.ndarray,
-    f_z: np.ndarray,
-    tol: float,
-) -> Dict[str, Any]:
-    e_y = boundary_edges(f_y)
-    e_z = boundary_edges(f_z)
-
-    if e_y.shape[0] == 0 and e_z.shape[0] == 0:
-        return {"precision": 1.0, "recall": 1.0, "fscore": 1.0}
-    if e_y.shape[0] == 0 or e_z.shape[0] == 0:
-        return {"precision": 0.0, "recall": 0.0, "fscore": 0.0}
-
-    p_y = v_y[np.unique(e_y.reshape(-1))]
-    p_z = v_z[np.unique(e_z.reshape(-1))]
-    d_yz = _pointset_distances(p_y, p_z)
-    d_zy = _pointset_distances(p_z, p_y)
-    precision = float(np.mean(d_yz <= tol))
-    recall = float(np.mean(d_zy <= tol))
-    fscore = float((2.0 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0)
-    return {"precision": precision, "recall": recall, "fscore": fscore}
-
-
 def evaluate_metrics(
     v_y: np.ndarray,
     f_y: np.ndarray,
@@ -808,7 +774,6 @@ def evaluate_metrics(
     metrics_cfg: Dict[str, Any],
 ) -> Dict[str, Any]:
     samples = int(metrics_cfg.get("sample_count", 8000))
-    tol_frac = float(metrics_cfg.get("boundary_fscore_tol_frac", 0.001))
     winsor_pct = float(metrics_cfg.get("chamfer_winsorized_upper_percentile", 95.0))
     winsor_pct = min(100.0, max(0.0, winsor_pct))
 
@@ -858,16 +823,8 @@ def evaluate_metrics(
             "d95_z_to_y": float(np.percentile(d_zy, 95)),
         }
 
-    bmin, bmax = mesh_bbox(v_z if v_z.size else v_y)
-    tol = tol_frac * float(np.linalg.norm(bmax - bmin))
-    bnd = boundary_fscore(v_y, f_y, v_z, f_z, tol)
-
     return {
         "geometry": geo,
-        "boundary": bnd,
-        "mesh_y": mesh_stats(v_y, f_y),
-        "mesh_z": mesh_stats(v_z, f_z),
-        "boundary_tolerance": tol,
     }
 
 
@@ -1322,7 +1279,6 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     cfg["limits"].setdefault("method_memory_limit_mb", 32768)
     cfg["limits"].setdefault("memory_check_interval_sec", 0.01)
     cfg["metrics"].setdefault("sample_count", 8000)
-    cfg["metrics"].setdefault("boundary_fscore_tol_frac", 0.001)
     cfg["metrics"].setdefault("chamfer_winsorized_upper_percentile", 95.0)
     cfg.setdefault("method_under_test", {})
     return cfg
@@ -1393,15 +1349,6 @@ def _compact_case_result(case: Dict[str, Any]) -> Dict[str, Any]:
                 "d95_y_to_z": geometry.get("d95_y_to_z"),
                 "d95_z_to_y": geometry.get("d95_z_to_y"),
             }
-        boundary = metrics.get("boundary")
-        if isinstance(boundary, dict):
-            compact_metrics["boundary"] = {
-                "precision": boundary.get("precision"),
-                "recall": boundary.get("recall"),
-                "fscore": boundary.get("fscore"),
-            }
-        if "boundary_tolerance" in metrics:
-            compact_metrics["boundary_tolerance"] = metrics.get("boundary_tolerance")
         out["metrics"] = compact_metrics
 
     if "preparation_peak_rss_mb" in case:
