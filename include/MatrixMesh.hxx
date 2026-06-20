@@ -2424,7 +2424,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //}
 
             auto edgeCrossesFWNField = [&](OpenMesh::SmartEdgeHandle eh,
-                const std::shared_ptr<tFWN>& acc,
+                const tFWN* acc,
                 double iso = 0.5,
                 int sampleCount = 16,
                 double eps = 1e-3) -> bool
@@ -2546,6 +2546,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             assigneIntersectionCurveIds();
 
+#if 1
             for (auto fh : component)
             {
                 //if (intersectionFace[fh])
@@ -2600,6 +2601,13 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         //    edgesToSplit.insert(feh);
                         //}
 
+                        if (!feh.is_boundary() &&!pIntersectionEdge[feh] && intersectionVertex[feh.v0()] && intersectionVertex[feh.v1()] && pIntersectionCurveId[feh.v0()] == pIntersectionCurveId[feh.v1()] &&
+                            intersectionFace(feh.h0().face()) && intersectionFace(feh.h1().face()) && labeling[feh.h0().face()] != labeling[feh.h1().face()])
+                        {
+
+                            pEdgeToSplit[feh] = true;
+                            edgesToSplit.insert(feh);
+                        }
 
                         if (!pIntersectionEdge[feh] && intersectionVertex[feh.v0()] && intersectionVertex[feh.v1()] && pIntersectionCurveId[feh.v0()] != pIntersectionCurveId[feh.v1()])
                         {
@@ -2613,11 +2621,29 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 {
                     for (auto eh : OpenMesh::make_smart(fh, m_mesh).edges())
                     {
-                        checkEdgeSplit(eh);
+                        //checkEdgeSplit(eh);
+                        //if (edgeCrossesFWNField(eh, acc))
+                        //{
+                            edgesToSplit.insert(eh);
+                        //}
                     }
                 }
             }
+#else
+            for (auto fh : component)
+            {
+                for (auto feh : OpenMesh::make_smart(fh, m_mesh).edges())
+                {
+                    if (pIntersectionEdge[feh])
+                    {
+                        continue;
+                    }
 
+                    edgesToSplit.insert(feh);
+                }
+            }
+
+#endif
 
             auto lastFaceId = m_mesh.faces_end()->idx();
             std::vector<OpenMesh::SmartVertexHandle> newVertices;
@@ -3376,7 +3402,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         for (auto he : topFace.halfedges())
                         {
 
-                            if (pIntersectionEdge[he.edge()] || pCoplanarEdge[he.edge()])
+                            bool fromIsOpen = intersectionVertex[he.from()] && intersectionValance[he.from()] == 1;
+                            bool toIsOpen = intersectionVertex[he.to()] && intersectionValance[he.to()] == 1;
+
+                            if (pIntersectionEdge[he.edge()] || pCoplanarEdge[he.edge()] ||
+                                (fromIsOpen && toIsOpen) /*edges connecting intersection vertices in small cracks, i.e. edges connecting endpoints of an open intersection curve*/)
                             {
                                 continue;
                             }
@@ -3589,7 +3619,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
     //now spread the labeling information over the connected components
     //for (const auto& component : components)
-    //int maxComponents = components.size();
+    int maxComponents = components.size();
     for (uint  componentId = 0; componentId < components.size(); ++componentId)
     {
         auto& component = components[componentId];
@@ -3666,20 +3696,20 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             {
                 if (intersectionFace[fh])
                 {
-                    int componentId = ma.m_faceClassifiedByComponent[m_tIdToOriginalTId[pFhToMaFh[fh]]];
+                    int classifyingComponentId = ma.m_faceClassifiedByComponent[m_tIdToOriginalTId[pFhToMaFh[fh]]];
                     auto l = labeling[fh];
 
-                    labelToLabelingComponentMap[l].insert(componentId);
+                    labelToLabelingComponentMap[l].insert(classifyingComponentId);
                 }
             }
 
             std::unordered_map < std::bitset<NBIT>, double > labelToLabelingVolumeMap;
 
-            for (auto [label, componentsId] : labelToLabelingComponentMap)
+            for (auto [label, classifyingComponentId] : labelToLabelingComponentMap)
             {
                 //TODO: should be bigfloat
                 double v = 0;
-                for (auto id : componentsId)
+                for (auto id : classifyingComponentId)
                 {
                     if (id < 0)
                     {
@@ -3702,16 +3732,16 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 {
                     maxVolume = val;
                     seedLabel = key;
-                    conflictingLabeling = false;
                 }
 
                 if (val == maxVolume && seedLabel != key)
                 {
                     //std::cout << "volume:" << val << " label: " << key << " labeling component ids size: " << labelToLabelingComponentMap[key].size() << std::endl;
 
-                    if (std::fabs(val) > 1e-5)
+                    if (std::fabs(val) > 1e-5 && componentId < maxComponents)
                     {
                         //Volume is too big to use e-surface, use further FWN based splitting
+                        //And this component was not yet processed via FWN cuts
                         useFloodLabeling = false;
 
                     }
@@ -3724,13 +3754,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     }
                 }
             }
-
         }
 
-        if (useFloodLabeling)
+        if (useFloodLabeling) 
         {
             //set labeling
-            if (!conflictingLabeling)
+            //if (!conflictingLabeling) //TOOD: unnecessary check, it's always conflictingLabeling is always false here 
             {
                 for (auto fh : component)
                 {
