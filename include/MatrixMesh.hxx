@@ -2648,25 +2648,17 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             auto lastFaceId = m_mesh.faces_end()->idx();
             std::vector<OpenMesh::SmartVertexHandle> newVertices;
             std::vector<OpenMesh::SmartFaceHandle> newFaces;
-            std::map<tEdgeHandle, std::vector<double>> edgeToSplitParamsMap;
             std::vector< tEdgeHandle>edgesToSplitVector(edgesToSplit.begin(), edgesToSplit.end());
+            std::vector<std::vector<double>> edgeSplitParamsPerEdge(edgesToSplitVector.size());
 
 #pragma omp parallel for
-            //for (auto edgeIt = edgesToSplit.begin(); edgeIt != edgesToSplit.end(); ++edgeIt)
-            for(int edgeIdx = 0; edgeIdx < edgesToSplitVector.size(); ++edgeIdx)
+            for (int edgeIdx = 0; edgeIdx < static_cast<int>(edgesToSplitVector.size()); ++edgeIdx)
             {
-                
-                //if (!edgeIt->is_valid() || m_mesh.status(*edgeIt).deleted())
-                //{
-                //    continue;
-                //}
-
                 if (!edgesToSplitVector[edgeIdx].is_valid() || m_mesh.status(edgesToSplitVector[edgeIdx]).deleted())
                 {
                     continue;
                 }
                  
-                //auto sEh = OpenMesh::make_smart(*edgeIt, m_mesh);
                 auto sEh = OpenMesh::make_smart(edgesToSplitVector[edgeIdx], m_mesh);
                 const auto baseVh0 = sEh.v0();
                 const auto baseVh1 = sEh.v1();
@@ -2819,11 +2811,18 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     continue;
                 }
 
-                edgeToSplitParamsMap[sEh] = splitParams;
+                edgeSplitParamsPerEdge[edgeIdx] = std::move(splitParams);
             }
-
-            for (auto eh : edgesToSplit)
+            
+            for (size_t edgeIdx = 0; edgeIdx < edgesToSplitVector.size(); ++edgeIdx)
             {
+                if (edgeSplitParamsPerEdge[edgeIdx].empty())
+                {
+                    continue;
+                }
+
+                auto eh = edgesToSplitVector[edgeIdx];
+
                 if (!eh.is_valid() || m_mesh.status(eh).deleted())
                 {
                     continue;
@@ -2835,7 +2834,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 const auto baseP0 = m_mesh.point(baseVh0);
                 const auto baseP1 = m_mesh.point(baseVh1);
 
-                const auto& splitParams = edgeToSplitParamsMap[eh];
+                //const auto& splitParams = edgeToSplitParamsMap[eh];
+                const auto& splitParams = edgeSplitParamsPerEdge[edgeIdx];
                 const auto endVh = baseVh1;
 
                 for (size_t splitIdx = 0; splitIdx < splitParams.size(); ++splitIdx)

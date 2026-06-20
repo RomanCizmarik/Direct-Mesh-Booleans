@@ -21,6 +21,7 @@ option(DMB_PROVIDE_OWN_DEPENDENCIES
 
 option(DMB_BUILD_UNIT_TESTS "Build unit tests" OFF)
 option(DMB_BUILD_EXAMPLES   "Build example applications" OFF)
+option(DMB_ENABLE_OPENMP    "Enable OpenMP parallelization" ON)
 
 # SIMD options 
 # For FaRMA to work
@@ -186,6 +187,16 @@ target_link_libraries(DirectMeshBooleans
         OpenMeshTools
         $<BUILD_INTERFACE:FaRMA>#FaRMA
 )
+
+if(DMB_ENABLE_OPENMP)
+    find_package(OpenMP)
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(DirectMeshBooleans PUBLIC OpenMP::OpenMP_CXX)
+        message(STATUS "DirectMeshBooleans: OpenMP enabled")
+    else()
+        message(WARNING "DirectMeshBooleans: OpenMP not found, building without OpenMP")
+    endif()
+endif()
 
 
 # ============================================================
