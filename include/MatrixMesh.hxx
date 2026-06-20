@@ -2648,15 +2648,26 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             auto lastFaceId = m_mesh.faces_end()->idx();
             std::vector<OpenMesh::SmartVertexHandle> newVertices;
             std::vector<OpenMesh::SmartFaceHandle> newFaces;
+            std::map<tEdgeHandle, std::vector<double>> edgeToSplitParamsMap;
+            std::vector< tEdgeHandle>edgesToSplitVector(edgesToSplit.begin(), edgesToSplit.end());
 
-            for (auto eh : edgesToSplit)
+#pragma omp parallel for
+            //for (auto edgeIt = edgesToSplit.begin(); edgeIt != edgesToSplit.end(); ++edgeIt)
+            for(int edgeIdx = 0; edgeIdx < edgesToSplitVector.size(); ++edgeIdx)
             {
-                if (!eh.is_valid() || m_mesh.status(eh).deleted())
+                
+                //if (!edgeIt->is_valid() || m_mesh.status(*edgeIt).deleted())
+                //{
+                //    continue;
+                //}
+
+                if (!edgesToSplitVector[edgeIdx].is_valid() || m_mesh.status(edgesToSplitVector[edgeIdx]).deleted())
                 {
                     continue;
                 }
-
-                auto sEh = OpenMesh::make_smart(eh, m_mesh);
+                 
+                //auto sEh = OpenMesh::make_smart(*edgeIt, m_mesh);
+                auto sEh = OpenMesh::make_smart(edgesToSplitVector[edgeIdx], m_mesh);
                 const auto baseVh0 = sEh.v0();
                 const auto baseVh1 = sEh.v1();
                 const auto baseP0 = m_mesh.point(baseVh0);
@@ -2666,10 +2677,10 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 const bool edgeHasCrossingInCutField = ((edgeWn0 - 0.5) * (edgeWn1 - 0.5)) < 0.0;
 
                 auto evalFWNAtT = [&](double t) -> double
-                {
-                    const auto p = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
-                    return acc->windingNumber(p);
-                };
+                    {
+                        const auto p = baseP0 + (baseP1 - baseP0) * static_cast<tScalar>(t);
+                        return acc->windingNumber(p);
+                    };
 
                 const double endpointShift = 1e-4;
                 const double tStart = intersectionVertex[baseVh0] ? endpointShift : 0.0;
@@ -2690,7 +2701,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
                 std::vector<tBracket> brackets;
                 std::vector<double> splitParams;
-                const int sampleCount = 16;
+                //const int sampleCount = 16;
+                const int sampleCount = std::min( std::max((int)std::ceil(m_mesh.calc_edge_length(sEh) / (edgeSplitLimit)), 1), 16);
                 const double rootEps = 1e-6;
 
                 double prevT = tStart;
@@ -2711,7 +2723,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         splitParams.push_back(currT);
                     }
 
-                    if ((prevF * currF) < 0.0)
+                    if ((prevF * currF) < 0.0 && std::fabs(prevF - currF) >= 1e-2)
                     {
                         brackets.push_back({ prevT, currT, prevF, currF });
                     }
@@ -2807,7 +2819,23 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     continue;
                 }
 
-                auto currentSplitEdge = sEh;
+                edgeToSplitParamsMap[sEh] = splitParams;
+            }
+
+            for (auto eh : edgesToSplit)
+            {
+                if (!eh.is_valid() || m_mesh.status(eh).deleted())
+                {
+                    continue;
+                }
+
+                auto currentSplitEdge = OpenMesh::make_smart(eh, m_mesh);
+                const auto baseVh0 = currentSplitEdge.v0();
+                const auto baseVh1 = currentSplitEdge.v1();
+                const auto baseP0 = m_mesh.point(baseVh0);
+                const auto baseP1 = m_mesh.point(baseVh1);
+
+                const auto& splitParams = edgeToSplitParamsMap[eh];
                 const auto endVh = baseVh1;
 
                 for (size_t splitIdx = 0; splitIdx < splitParams.size(); ++splitIdx)
