@@ -1665,7 +1665,7 @@ template<typename MeshType>
 inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 {
 
-    transferArrangementPropertiesToMesh();
+    //transferArrangementPropertiesToMesh();
     //detectBoundaries();
     //handleCoplanarFaces();
 
@@ -1673,7 +1673,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
     //std::string path = "C:/skola/PhD/Samples/booleans/components/";
     std::string path = "C:/skola/PhD/VUT/booleans_paper/extension/debug/";
 
-#if 1
+#if 0
 
     MeshType debugMesh;
 
@@ -1835,7 +1835,7 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
 #endif
 #endif
 
-#if 0
+#if 1
     //std::string path = "D:/skola/PhD/VUT/tezy/images and models/bool principle/";
     //std::string path = "C:/skola/PhD/Samples/booleans/components/";
 
@@ -2869,7 +2869,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     auto newVh = m_mesh.split(currentSplitEdge, splitPos);
 
                     pNewVh[newVh] = true;
-                    pRawFWN[newVh] = acc->windingNumber(splitPos);
+                    pRawFWN[newVh] = acc->windingNumber(splitPos); //TODO: is this even necessary?
                     pFWN[newVh] = 0.5;
 
                     uint newMAVhId = ma.addVertex(splitPos[0], splitPos[1], splitPos[2]);
@@ -2911,6 +2911,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                             componentCopy.push_back(fh);
                             newFaces.push_back(fh);
                         }
+                    }
+
+                    //just to be double sure that this value is initialized
+                    for (auto eh : newVh.edges())
+                    {
+                        pIntersectionEdge[eh] = false;
                     }
 
                     //for (auto he : newVh.outgoing_halfedges())
@@ -3309,9 +3315,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         continue;
                     }
 
-                    pIntersectionEdge[sEh] = false;
-
                     if (!(sEh.h0().face().is_valid() && sEh.h1().face().is_valid()))
+                    {
+                        continue;
+                    }
+
+                    if (!(faceClassifed[sEh.h0().face()] && faceClassifed[sEh.h1().face()]))
                     {
                         continue;
                     }
