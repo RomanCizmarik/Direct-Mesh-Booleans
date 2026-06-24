@@ -107,6 +107,11 @@ def parse_args() -> argparse.Namespace:
         help="Manual case operation: union|intersection|difference (or aliases).",
     )
     parser.add_argument("--case-name", type=str, default="manual_case", help="Manual case identifier.")
+    parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="Manual case only: run preparation (C/D/Z and debug outputs) without method execution.",
+    )
     return parser.parse_args()
 
 
@@ -146,17 +151,22 @@ def main() -> int:
     if args.seed is not None:
         config["seed"] = int(args.seed)
 
+    manual_mode = args.input_a is not None or args.input_b is not None
+    if args.prepare_only and not manual_mode:
+        raise ValueError("--prepare-only requires --input-a and --input-b.")
+
     shutil.copy2(main_config_path, root_out_dir / "main_config_input.json")
     _write_json(root_out_dir / "main_config_effective.json", config)
 
-    methods: list[dict]
-    if args.method_config is not None:
-        methods = load_method_configs(args.method_config.parent.resolve())
-        methods = [m for m in methods if Path(m["config_path"]).resolve() == args.method_config.resolve()]
-        if not methods:
-            raise ValueError(f"Method config not found: {args.method_config}")
-    else:
-        methods = load_method_configs(args.methods_dir.resolve())
+    methods: list[dict] = []
+    if not args.prepare_only:
+        if args.method_config is not None:
+            methods = load_method_configs(args.method_config.parent.resolve())
+            methods = [m for m in methods if Path(m["config_path"]).resolve() == args.method_config.resolve()]
+            if not methods:
+                raise ValueError(f"Method config not found: {args.method_config}")
+        else:
+            methods = load_method_configs(args.methods_dir.resolve())
 
     expected_results_dir = root_out_dir / "expected_results"
     global_debug_cfg = config.get("debug", {})
@@ -188,9 +198,9 @@ def main() -> int:
             }
         )
 
-    manual_mode = args.input_a is not None or args.input_b is not None
     manual_cases: list[dict] = []
     candidate_records: list[dict] = []
+    preparation_records: list[dict] = []
     target_case_count = 0
     dataset_pair_indices: list[tuple[int, int]] = []
     dataset_rng = np.random.default_rng(int(config["seed"]))
@@ -251,14 +261,19 @@ def main() -> int:
             if prep_case_dir.exists():
                 shutil.rmtree(prep_case_dir, ignore_errors=True)
             prepared = prepare_case_data_with_limits(case, prep_cfg, prep_case_dir)
-            if prepared.get("status") == "ok":
+            if args.prepare_only:
+                prep_record = dict(prepared)
+                prep_record["prep_case_dir"] = str(prep_case_dir)
+                preparation_records.append(prep_record)
+            if prepared.get("status") == "ok" and not args.prepare_only:
                 v_z, f_z = load_mesh(Path(str(prepared["z_path"])))
                 prepared["v_z"] = v_z
                 prepared["f_z"] = f_z
-            for run in method_runs:
-                result = run_case_with_prepared(case, run["run_cfg"], run["output_path"], prepared)
-                run["results"].append(result)
-            if prep_case_dir.exists():
+            if not args.prepare_only:
+                for run in method_runs:
+                    result = run_case_with_prepared(case, run["run_cfg"], run["output_path"], prepared)
+                    run["results"].append(result)
+            if prep_case_dir.exists() and not args.prepare_only:
                 shutil.rmtree(prep_case_dir, ignore_errors=True)
             cases.append(case)
             input_pairs.append(
@@ -322,6 +337,23 @@ def main() -> int:
     _write_csv(root_out_dir / "cases_manifest.csv", cases)
     _write_json(root_out_dir / "input_mesh_pairs.json", input_pairs)
     _write_csv(root_out_dir / "input_mesh_pairs.csv", input_pairs)
+
+    if args.prepare_only:
+        summary_path = root_out_dir / "preparation_summary.json"
+        _write_json(summary_path, preparation_records)
+        has_failures = any(str(r.get("status", "")).lower() != "ok" for r in preparation_records)
+        print(
+            json.dumps(
+                {
+                    "prepare_only": True,
+                    "cases": len(preparation_records),
+                    "failed": sum(1 for r in preparation_records if str(r.get("status", "")).lower() != "ok"),
+                    "summary_path": str(summary_path),
+                },
+                indent=2,
+            )
+        )
+        return 2 if has_failures else 0
 
     per_method_overview = []
     for run in method_runs:

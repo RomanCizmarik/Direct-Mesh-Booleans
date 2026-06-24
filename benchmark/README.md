@@ -26,6 +26,24 @@ python benchmark\scripts\run_pipeline.py `
   --case-name my_case
 ```
 
+## Run a single preparation step (no method execution)
+
+This runs exactly the benchmark preparation stage for one manual pair (`X`, `C`, `D`, `Z`) and writes outputs to `--output-dir`, without running any tested method.
+
+```powershell
+python benchmark\scripts\run_pipeline.py `
+  --input-a C:\path\to\A.obj `
+  --input-b C:\path\to\B.obj `
+  --op union `
+  --output-dir C:\path\to\run_root `
+  --case-name my_case `
+  --prepare-only
+```
+
+- Prepared meshes are kept in `<output-dir>\_prepared_cases\<case-name>\` (including `C.obj`, `D.obj`, `Z.obj`).
+- Debug artifacts are still controlled by config `debug.save_cut_meshes` / `debug.save_expected_result` and, when enabled, are written to `<output-dir>\expected_results\`.
+- Summary is written to `<output-dir>\preparation_summary.json`.
+
 ## Per-method configuration
 
 Method runner settings are defined **per binary** via JSON files in `benchmark\config\methods\`.
