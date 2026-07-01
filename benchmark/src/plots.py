@@ -177,6 +177,7 @@ def _save_multi_format(
     dpi: int,
     export_timeout_sec: float,
     fallback_html_on_failure: bool,
+    static_image_fig: Optional[go.Figure] = None,
 ) -> Tuple[List[str], List[str]]:
     base_path.parent.mkdir(parents=True, exist_ok=True)
     created: List[str] = []
@@ -194,7 +195,8 @@ def _save_multi_format(
             html_fallback_created = True
             continue
 
-        ok, err = _write_image_with_timeout(fig, out, scale=scale, timeout_sec=export_timeout_sec)
+        fig_for_static = static_image_fig if static_image_fig is not None else fig
+        ok, err = _write_image_with_timeout(fig_for_static, out, scale=scale, timeout_sec=export_timeout_sec)
         if ok:
             created.append(str(out))
             continue
@@ -208,10 +210,97 @@ def _save_multi_format(
     return created, warnings
 
 
-def _plot_metric_box(rows: Sequence[Dict[str, Any]], metric: str, y_title: str) -> go.Figure:
+def _format_stat_value(value: float) -> str:
+    v = float(value)
+    av = abs(v)
+    if av == 0.0:
+        return "0"
+    if av < 1e-3 or av >= 1e3:
+        return f"{v:.2e}"
+    return f"{v:.6g}"
+
+
+def _spread_three_values(min_v: float, med_v: float, max_v: float, gap: float) -> Tuple[float, float, float]:
+    y0 = float(min_v)
+    y1 = float(med_v)
+    y2 = float(max_v)
+
+    if y1 < y0 + gap:
+        y1 = y0 + gap
+    if y2 < y1 + gap:
+        y2 = y1 + gap
+
+    raw_center = (float(min_v) + float(med_v) + float(max_v)) / 3.0
+    adj_center = (y0 + y1 + y2) / 3.0
+    shift = raw_center - adj_center
+    y0 += shift
+    y1 += shift
+    y2 += shift
+
+    if y1 < y0 + gap:
+        y1 = y0 + gap
+    if y2 < y1 + gap:
+        y2 = y1 + gap
+    return y0, y1, y2
+
+
+def _add_box_summary_annotations(fig: go.Figure, stats_rows: Sequence[Dict[str, Any]]) -> None:
+    if not stats_rows:
+        return
+
+    global_min = min(float(s["min"]) for s in stats_rows)
+    global_max = max(float(s["max"]) for s in stats_rows)
+    span = max(global_max - global_min, max(abs(global_min), abs(global_max)) * 0.05, 1e-12)
+    min_gap = max(span * 0.035, 1e-12)
+
+    adj_min = float("inf")
+    adj_max = -float("inf")
+    for s in stats_rows:
+        method = str(s["method"])
+        min_raw = float(s["min"])
+        med_raw = float(s["median"])
+        max_raw = float(s["max"])
+        color = str(s.get("color", "rgba(34, 102, 170, 0.95)"))
+        min_y, med_y, max_y = _spread_three_values(min_raw, med_raw, max_raw, min_gap)
+        adj_min = min(adj_min, min_y)
+        adj_max = max(adj_max, max_y)
+
+        for label, raw_v, y in (
+            ("min", min_raw, min_y),
+            ("median", med_raw, med_y),
+            ("max", max_raw, max_y),
+        ):
+            fig.add_annotation(
+                x=method,
+                y=float(y),
+                xref="x",
+                yref="y",
+                text=f"{label}: {_format_stat_value(raw_v)}",
+                showarrow=False,
+                xanchor="left",
+                yanchor="middle",
+                xshift=96,
+                bgcolor=color,
+                bordercolor=color,
+                font=dict(size=14, color="white", family=FONT_FAMILY),
+                align="left",
+            )
+
+    y_pad = span * 0.08 + min_gap
+    fig.update_yaxes(range=[min(global_min, adj_min) - y_pad, max(global_max, adj_max) + y_pad])
+    fig.update_layout(margin=dict(r=280))
+
+
+def _plot_metric_box(
+    rows: Sequence[Dict[str, Any]],
+    metric: str,
+    y_title: str,
+    show_summary_stats: bool = False,
+) -> go.Figure:
     fig = go.Figure()
     methods = sorted({str(r["method"]) for r in rows})
     colors = px.colors.qualitative.D3
+    stats_rows: List[Dict[str, Any]] = []
     for idx, method in enumerate(methods):
         vals = [
             float(r[metric])
@@ -220,6 +309,16 @@ def _plot_metric_box(rows: Sequence[Dict[str, Any]], metric: str, y_title: str) 
         ]
         if not vals:
             continue
+        arr = np.asarray(vals, dtype=np.float64)
+        stats_rows.append(
+            {
+                "method": method,
+                "min": float(np.min(arr)),
+                "median": float(np.median(arr)),
+                "max": float(np.max(arr)),
+                "color": colors[idx % len(colors)],
+            }
+        )
         fig.add_trace(
             go.Box(
                 y=vals,
@@ -228,6 +327,10 @@ def _plot_metric_box(rows: Sequence[Dict[str, Any]], metric: str, y_title: str) 
                 marker_color=colors[idx % len(colors)],
             )
         )
+
+    if show_summary_stats:
+        _add_box_summary_annotations(fig, stats_rows)
+
     fig.update_layout(
         xaxis_title="Method",
         yaxis_title=y_title,
@@ -242,10 +345,12 @@ def _plot_asymmetry_box(
     z_to_y_key: str,
     y_title: str,
     eps: float = 1e-12,
+    show_summary_stats: bool = False,
 ) -> go.Figure:
     fig = go.Figure()
     methods = sorted({str(r["method"]) for r in rows})
     colors = px.colors.qualitative.D3
+    stats_rows: List[Dict[str, Any]] = []
     for idx, method in enumerate(methods):
         vals: List[float] = []
         for r in rows:
@@ -258,6 +363,16 @@ def _plot_asymmetry_box(
             vals.append(float(np.log10((yz + eps) / (zy + eps))))
         if not vals:
             continue
+        arr = np.asarray(vals, dtype=np.float64)
+        stats_rows.append(
+            {
+                "method": method,
+                "min": float(np.min(arr)),
+                "median": float(np.median(arr)),
+                "max": float(np.max(arr)),
+                "color": colors[idx % len(colors)],
+            }
+        )
         fig.add_trace(
             go.Box(
                 y=vals,
@@ -266,6 +381,8 @@ def _plot_asymmetry_box(
                 marker_color=colors[idx % len(colors)],
             )
         )
+    if show_summary_stats:
+        _add_box_summary_annotations(fig, stats_rows)
     fig.update_layout(
         xaxis_title="Method",
         yaxis_title=y_title,
@@ -416,7 +533,8 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
 
     created_files: List[str] = []
     warnings: List[str] = []
-    fig = _plot_metric_box(rows, "hausdorff", "Hausdorff distance")
+    fig = _plot_metric_box(rows, "hausdorff", "Hausdorff distance", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "hausdorff", "Hausdorff distance", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "hausdorff_by_method",
@@ -424,11 +542,13 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "hausdorff_y_to_z", "Hausdorff distance (Y -> Z)")
+    fig = _plot_metric_box(rows, "hausdorff_y_to_z", "Hausdorff distance (Y -> Z)", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "hausdorff_y_to_z", "Hausdorff distance (Y -> Z)", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "hausdorff_y_to_z_by_method",
@@ -436,11 +556,13 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "hausdorff_z_to_y", "Hausdorff distance (Z -> Y)")
+    fig = _plot_metric_box(rows, "hausdorff_z_to_y", "Hausdorff distance (Z -> Y)", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "hausdorff_z_to_y", "Hausdorff distance (Z -> Y)", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "hausdorff_z_to_y_by_method",
@@ -448,11 +570,13 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "chamfer_symmetric", "Chamfer distance (symmetric)")
+    fig = _plot_metric_box(rows, "chamfer_symmetric", "Chamfer distance (symmetric)", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "chamfer_symmetric", "Chamfer distance (symmetric)", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "chamfer_by_method",
@@ -460,11 +584,23 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "chamfer_winsorized_symmetric", "Chamfer distance (winsorized symmetric)")
+    fig = _plot_metric_box(
+        rows,
+        "chamfer_winsorized_symmetric",
+        "Chamfer distance (winsorized symmetric)",
+        show_summary_stats=False,
+    )
+    fig_static = _plot_metric_box(
+        rows,
+        "chamfer_winsorized_symmetric",
+        "Chamfer distance (winsorized symmetric)",
+        show_summary_stats=True,
+    )
     files, warns = _save_multi_format(
         fig,
         plots_dir / "chamfer_winsorized_by_method",
@@ -472,11 +608,13 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "chamfer_y_to_z", "Chamfer distance (Y -> Z)")
+    fig = _plot_metric_box(rows, "chamfer_y_to_z", "Chamfer distance (Y -> Z)", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "chamfer_y_to_z", "Chamfer distance (Y -> Z)", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "chamfer_y_to_z_by_method",
@@ -484,11 +622,13 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "chamfer_z_to_y", "Chamfer distance (Z -> Y)")
+    fig = _plot_metric_box(rows, "chamfer_z_to_y", "Chamfer distance (Z -> Y)", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "chamfer_z_to_y", "Chamfer distance (Z -> Y)", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "chamfer_z_to_y_by_method",
@@ -496,11 +636,13 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "d95_y_to_z", "Distance D95 (Y -> Z)")
+    fig = _plot_metric_box(rows, "d95_y_to_z", "Distance D95 (Y -> Z)", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "d95_y_to_z", "Distance D95 (Y -> Z)", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "d95_y_to_z_by_method",
@@ -508,11 +650,13 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
 
-    fig = _plot_metric_box(rows, "d95_z_to_y", "Distance D95 (Z -> Y)")
+    fig = _plot_metric_box(rows, "d95_z_to_y", "Distance D95 (Z -> Y)", show_summary_stats=False)
+    fig_static = _plot_metric_box(rows, "d95_z_to_y", "Distance D95 (Z -> Y)", show_summary_stats=True)
     files, warns = _save_multi_format(
         fig,
         plots_dir / "d95_z_to_y_by_method",
@@ -520,6 +664,7 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
@@ -530,6 +675,15 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         "chamfer_z_to_y",
         "Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
         eps=1e-12,
+        show_summary_stats=False,
+    )
+    fig_static = _plot_asymmetry_box(
+        rows,
+        "chamfer_y_to_z",
+        "chamfer_z_to_y",
+        "Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
+        eps=1e-12,
+        show_summary_stats=True,
     )
     files, warns = _save_multi_format(
         fig,
@@ -538,6 +692,7 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
@@ -548,6 +703,15 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         "chamfer_winsorized_z_to_y",
         "Winsorized Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
         eps=1e-12,
+        show_summary_stats=False,
+    )
+    fig_static = _plot_asymmetry_box(
+        rows,
+        "chamfer_winsorized_y_to_z",
+        "chamfer_winsorized_z_to_y",
+        "Winsorized Chamfer asymmetry log10((Y -> Z + eps)/(Z -> Y + eps))",
+        eps=1e-12,
+        show_summary_stats=True,
     )
     files, warns = _save_multi_format(
         fig,
@@ -556,6 +720,7 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         dpi,
         export_timeout_sec,
         fallback_html_on_failure,
+        static_image_fig=fig_static,
     )
     created_files.extend(files)
     warnings.extend(warns)
