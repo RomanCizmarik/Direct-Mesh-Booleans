@@ -13,6 +13,7 @@ import kaleido  # noqa: F401  # required by plotly.write_image
 
 
 FONT_FAMILY = "Times New Roman"
+MIN_POS_FLOAT = float(np.nextafter(0.0, 1.0))
 DISPLAY_NAME_ALIASES = {
     "direct_mesh_booleans": "DMB",
     "direct_mesh_booleans_extension": "DMB_extension",
@@ -244,14 +245,46 @@ def _spread_three_values(min_v: float, med_v: float, max_v: float, gap: float) -
     return y0, y1, y2
 
 
-def _add_box_summary_annotations(fig: go.Figure, stats_rows: Sequence[Dict[str, Any]]) -> None:
+def _spread_three_values_log(min_v: float, med_v: float, max_v: float, gap_log: float) -> Tuple[float, float, float]:
+    tiny = MIN_POS_FLOAT
+    l0 = float(np.log10(max(min_v, tiny)))
+    l1 = float(np.log10(max(med_v, tiny)))
+    l2 = float(np.log10(max(max_v, tiny)))
+
+    if l1 < l0 + gap_log:
+        l1 = l0 + gap_log
+    if l2 < l1 + gap_log:
+        l2 = l1 + gap_log
+
+    raw_center = (float(np.log10(max(min_v, tiny))) + float(np.log10(max(med_v, tiny))) + float(np.log10(max(max_v, tiny)))) / 3.0
+    adj_center = (l0 + l1 + l2) / 3.0
+    shift = raw_center - adj_center
+    l0 += shift
+    l1 += shift
+    l2 += shift
+
+    if l1 < l0 + gap_log:
+        l1 = l0 + gap_log
+    if l2 < l1 + gap_log:
+        l2 = l1 + gap_log
+    return float(10.0**l0), float(10.0**l1), float(10.0**l2)
+
+
+def _add_box_summary_annotations(fig: go.Figure, stats_rows: Sequence[Dict[str, Any]], log_scale: bool = False) -> None:
     if not stats_rows:
         return
 
     global_min = min(float(s["min"]) for s in stats_rows)
     global_max = max(float(s["max"]) for s in stats_rows)
-    span = max(global_max - global_min, max(abs(global_min), abs(global_max)) * 0.05, 1e-12)
-    min_gap = max(span * 0.035, 1e-12)
+    if log_scale:
+        tiny = MIN_POS_FLOAT
+        global_min = max(global_min, tiny)
+        global_max = max(global_max, global_min * 1.001)
+        span_log = max(np.log10(global_max) - np.log10(global_min), 0.25)
+        min_gap_log = max(span_log * 0.07, 0.08)
+    else:
+        span = max(global_max - global_min, max(abs(global_min), abs(global_max)) * 0.05, 1e-12)
+        min_gap = max(span * 0.035, 1e-12)
 
     adj_min = float("inf")
     adj_max = -float("inf")
@@ -261,7 +294,10 @@ def _add_box_summary_annotations(fig: go.Figure, stats_rows: Sequence[Dict[str, 
         med_raw = float(s["median"])
         max_raw = float(s["max"])
         color = str(s.get("color", "rgba(34, 102, 170, 0.95)"))
-        min_y, med_y, max_y = _spread_three_values(min_raw, med_raw, max_raw, min_gap)
+        if log_scale:
+            min_y, med_y, max_y = _spread_three_values_log(min_raw, med_raw, max_raw, min_gap_log)
+        else:
+            min_y, med_y, max_y = _spread_three_values(min_raw, med_raw, max_raw, min_gap)
         adj_min = min(adj_min, min_y)
         adj_max = max(adj_max, max_y)
 
@@ -286,8 +322,16 @@ def _add_box_summary_annotations(fig: go.Figure, stats_rows: Sequence[Dict[str, 
                 align="left",
             )
 
-    y_pad = span * 0.08 + min_gap
-    fig.update_yaxes(range=[min(global_min, adj_min) - y_pad, max(global_max, adj_max) + y_pad])
+    if log_scale:
+        tiny = MIN_POS_FLOAT
+        lo = min(max(global_min, tiny), max(adj_min, tiny))
+        hi = max(global_max, adj_max)
+        lo_log = np.log10(lo) - (span_log * 0.10 + min_gap_log)
+        hi_log = np.log10(hi) + (span_log * 0.12 + min_gap_log)
+        fig.update_yaxes(range=[float(lo_log), float(hi_log)])
+    else:
+        y_pad = span * 0.08 + min_gap
+        fig.update_yaxes(range=[min(global_min, adj_min) - y_pad, max(global_max, adj_max) + y_pad])
     fig.update_layout(margin=dict(r=280))
 
 
@@ -296,17 +340,25 @@ def _plot_metric_box(
     metric: str,
     y_title: str,
     show_summary_stats: bool = False,
+    log_scale: bool = False,
+    log_epsilon: float = MIN_POS_FLOAT,
 ) -> go.Figure:
     fig = go.Figure()
     methods = sorted({str(r["method"]) for r in rows})
     colors = px.colors.qualitative.D3
     stats_rows: List[Dict[str, Any]] = []
     for idx, method in enumerate(methods):
-        vals = [
-            float(r[metric])
-            for r in rows
-            if r["method"] == method and r["success"] == 1 and np.isfinite(float(r[metric]))
-        ]
+        vals: List[float] = []
+        for r in rows:
+            if r["method"] != method or r["success"] != 1:
+                continue
+            val = float(r.get(metric, float("nan")))
+            if not np.isfinite(val):
+                continue
+            if log_scale:
+                vals.append(float(max(val, float(log_epsilon))))
+            else:
+                vals.append(val)
         if not vals:
             continue
         arr = np.asarray(vals, dtype=np.float64)
@@ -328,8 +380,10 @@ def _plot_metric_box(
             )
         )
 
+    if log_scale:
+        fig.update_yaxes(type="log")
     if show_summary_stats:
-        _add_box_summary_annotations(fig, stats_rows)
+        _add_box_summary_annotations(fig, stats_rows, log_scale=log_scale)
 
     fig.update_layout(
         xaxis_title="Method",
@@ -585,6 +639,24 @@ def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[s
         export_timeout_sec,
         fallback_html_on_failure,
         static_image_fig=fig_static,
+    )
+    created_files.extend(files)
+    warnings.extend(warns)
+
+    fig = _plot_metric_box(
+        rows,
+        "chamfer_symmetric",
+        "Chamfer distance (symmetric, log scale)",
+        show_summary_stats=False,
+        log_scale=True,
+    )
+    files, warns = _save_multi_format(
+        fig,
+        plots_dir / "chamfer_by_method_log",
+        formats,
+        dpi,
+        export_timeout_sec,
+        fallback_html_on_failure,
     )
     created_files.extend(files)
     warnings.extend(warns)
