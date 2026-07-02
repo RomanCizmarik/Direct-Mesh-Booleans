@@ -259,6 +259,52 @@ def _build_violin_figure(
     return _apply_layout(fig)
 
 
+def _build_grouped_run_box_figure(
+    run_a_rows: Sequence[Dict[str, Any]],
+    run_b_rows: Sequence[Dict[str, Any]],
+    run_a_short_label: str,
+    run_b_short_label: str,
+    methods: Sequence[str],
+    metric: str,
+    metric_title: str,
+    log_y: bool = False,
+    log_floor: float = MIN_POS_FLOAT,
+) -> go.Figure:
+    fig = go.Figure()
+    run_specs = [
+        (run_a_short_label, run_a_rows, "#1f77b4"),
+        (run_b_short_label, run_b_rows, "#ff7f0e"),
+    ]
+    for run_label, rows, color in run_specs:
+        x_vals: List[str] = []
+        y_vals: List[float] = []
+        for method in methods:
+            vals = _filter_metric_values(rows, method, metric, log_axis=log_y, log_floor=log_floor)
+            if vals.size == 0:
+                continue
+            x_vals.extend([method] * int(vals.size))
+            y_vals.extend(float(v) for v in vals.tolist())
+        if not y_vals:
+            continue
+        fig.add_trace(
+            go.Box(
+                x=x_vals,
+                y=y_vals,
+                name=run_label,
+                legendgroup=run_label,
+                marker_color=color,
+                boxpoints=False,
+            )
+        )
+    fig.update_layout(boxmode="group", legend_title="Benchmark")
+    fig.update_xaxes(title_text="Method", categoryorder="array", categoryarray=list(methods))
+    if log_y:
+        fig.update_yaxes(type="log", title_text=f"{metric_title} (log scale)")
+    else:
+        fig.update_yaxes(title_text=metric_title)
+    return _apply_layout(fig)
+
+
 def _write_summary_csv(
     out_path: Path,
     run_rows: Sequence[Tuple[str, str, Sequence[Dict[str, Any]]]],
@@ -314,6 +360,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-b", type=Path, default=DEFAULT_RUN_B, help="Second run directory.")
     parser.add_argument("--run-a-label", type=str, default=None, help="Optional display label for run A.")
     parser.add_argument("--run-b-label", type=str, default=None, help="Optional display label for run B.")
+    parser.add_argument("--run-a-short-label", type=str, default="L benchmark", help="Short legend label for run A.")
+    parser.add_argument("--run-b-short-label", type=str, default="S benchmark", help="Short legend label for run B.")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUT, help="Output directory for paper plots.")
     parser.add_argument("--formats", type=str, default="pdf,html", help="Comma-separated formats, e.g. pdf,html.")
     parser.add_argument("--dpi", type=int, default=180, help="Export DPI for static image formats.")
@@ -342,6 +390,8 @@ def main() -> int:
     run_b_rows = _load_plot_rows(run_b)
     run_a_label = args.run_a_label or _regime_label_from_config(run_a)
     run_b_label = args.run_b_label or _regime_label_from_config(run_b)
+    run_a_short_label = str(args.run_a_short_label)
+    run_b_short_label = str(args.run_b_short_label)
 
     methods = sorted({str(r["method"]) for r in run_a_rows} | {str(r["method"]) for r in run_b_rows})
     palette = px.colors.qualitative.D3
@@ -354,11 +404,13 @@ def main() -> int:
         ("chamfer_ecdf", "chamfer_symmetric", "Chamfer distance (symmetric)", False, "ecdf"),
         ("chamfer_ecdf_logx", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "ecdf"),
         ("chamfer_box_logy", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "box"),
+        ("chamfer_box_grouped_runs_logy", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "grouped_box"),
         ("chamfer_violin", "chamfer_symmetric", "Chamfer distance (symmetric)", False, "violin"),
         ("chamfer_violin_logy", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "violin"),
         ("hausdorff_ecdf", "hausdorff", "Hausdorff distance", False, "ecdf"),
         ("hausdorff_ecdf_logx", "hausdorff", "Hausdorff distance", True, "ecdf"),
         ("hausdorff_box_logy", "hausdorff", "Hausdorff distance", True, "box"),
+        ("hausdorff_box_grouped_runs_logy", "hausdorff", "Hausdorff distance", True, "grouped_box"),
         ("hausdorff_violin", "hausdorff", "Hausdorff distance", False, "violin"),
         ("hausdorff_violin_logy", "hausdorff", "Hausdorff distance", True, "violin"),
     ]
@@ -388,6 +440,18 @@ def main() -> int:
                     metric,
                     title,
                     colors=colors,
+                    log_y=log_flag,
+                    log_floor=log_floor,
+                )
+            elif kind == "grouped_box":
+                fig = _build_grouped_run_box_figure(
+                    run_a_rows,
+                    run_b_rows,
+                    run_a_short_label,
+                    run_b_short_label,
+                    methods,
+                    metric,
+                    title,
                     log_y=log_flag,
                     log_floor=log_floor,
                 )
@@ -421,6 +485,8 @@ def main() -> int:
         "run_b": str(run_b),
         "run_a_label": run_a_label,
         "run_b_label": run_b_label,
+        "run_a_short_label": run_a_short_label,
+        "run_b_short_label": run_b_short_label,
         "output_dir": str(out_dir),
         "log_floor": log_floor,
         "methods": methods,
