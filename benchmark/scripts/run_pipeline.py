@@ -26,7 +26,7 @@ from benchmark_pipeline import (  # noqa: E402
     run_case_with_prepared,
     save_global_outputs,
 )
-from plots import generate_standard_plots  # noqa: E402
+from plots import generate_method_stats_summary, generate_standard_plots  # noqa: E402
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -98,6 +98,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stats-only",
         action="store_true",
+        help="Generate benchmark method statistics from existing results in --output-dir.",
+    )
+    parser.add_argument(
+        "--mesh-stats-only",
+        action="store_true",
         help="Run only dataset mesh stats stage and write mesh_stats.json/csv.",
     )
     parser.add_argument(
@@ -122,6 +127,9 @@ def main() -> int:
     root_out_dir = args.output_dir.resolve()
     root_out_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.stats_only and args.mesh_stats_only:
+        raise ValueError("Use either --stats-only or --mesh-stats-only, not both.")
+
     if args.plots_only:
         plots_cfg = copy.deepcopy(config.get("plots", {}))
         plots_cfg["enabled"] = True
@@ -129,8 +137,12 @@ def main() -> int:
         print(json.dumps({"plots": plot_summary}, indent=2))
         return 0
     if args.stats_only:
+        stats_summary = generate_method_stats_summary(root_out_dir)
+        print(json.dumps({"stats": stats_summary}, indent=2))
+        return 0
+    if args.mesh_stats_only:
         if args.dataset_dir is None:
-            raise ValueError("--stats-only requires --dataset-dir.")
+            raise ValueError("--mesh-stats-only requires --dataset-dir.")
         dataset_dir = args.dataset_dir.resolve()
         mesh_records = get_dataset_mesh_stats(dataset_dir, update_stats=True)
         print(

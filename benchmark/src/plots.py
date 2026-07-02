@@ -221,6 +221,38 @@ def _format_stat_value(value: float) -> str:
     return f"{v:.6g}"
 
 
+def _compute_summary_stats(values: np.ndarray) -> Dict[str, Any]:
+    arr = np.asarray(values, dtype=np.float64)
+    if arr.size == 0:
+        nan = float("nan")
+        return {
+            "n": 0,
+            "min": nan,
+            "max": nan,
+            "mean": nan,
+            "std": nan,
+            "median": nan,
+        }
+    return {
+        "n": int(arr.size),
+        "min": float(np.min(arr)),
+        "max": float(np.max(arr)),
+        "mean": float(np.mean(arr)),
+        "std": float(np.std(arr)),
+        "median": float(np.median(arr)),
+    }
+
+
+def _format_summary_value(value: Any) -> str:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "n/a"
+    if not np.isfinite(v):
+        return "n/a"
+    return _format_stat_value(v)
+
+
 def _spread_three_values(min_v: float, med_v: float, max_v: float, gap: float) -> Tuple[float, float, float]:
     y0 = float(min_v)
     y1 = float(med_v)
@@ -560,6 +592,101 @@ def _plot_complexity_scatter(
     )
     fig.update_xaxes(type="log")
     return _apply_standard_layout(fig)
+
+
+def generate_method_stats_summary(run_root: Path) -> Dict[str, Any]:
+    run_root = run_root.resolve()
+    if not run_root.exists():
+        raise ValueError(f"Run directory does not exist: {run_root}")
+
+    rows = _collect_plot_rows(run_root)
+    if not rows:
+        raise ValueError(f"No method results found under: {run_root}")
+
+    methods = sorted({str(r["method"]) for r in rows})
+    metric_specs: Sequence[Tuple[str, str, str, str]] = [
+        ("runtime_sec", "runtime_sec", "Runtime [s]", "all"),
+        ("peak_memory_usage", "peak_memory_mb", "Peak memory [MB]", "all"),
+        ("combined_size_mb", "combined_input_size_mb", "Combined input size [MB]", "all"),
+        ("hausdorff", "hausdorff", "Hausdorff distance", "success"),
+        ("chamfer_symmetric", "chamfer_symmetric", "Chamfer distance (symmetric)", "success"),
+        ("chamfer_y_to_z", "chamfer_y_to_z", "Chamfer distance (Y -> Z)", "success"),
+        ("chamfer_z_to_y", "chamfer_z_to_y", "Chamfer distance (Z -> Y)", "success"),
+    ]
+
+    method_rows: List[Dict[str, Any]] = []
+    for method in methods:
+        all_rows = [r for r in rows if str(r.get("method", "")) == method]
+        ok_rows = [r for r in all_rows if int(r.get("success", 0)) == 1]
+        total_cases = len(all_rows)
+        success_cases = len(ok_rows)
+        row: Dict[str, Any] = {
+            "method": method,
+            "total_cases": total_cases,
+            "success_cases": success_cases,
+            "success_rate_pct": (100.0 * success_cases / total_cases) if total_cases > 0 else float("nan"),
+        }
+
+        for source_key, out_prefix, _, scope in metric_specs:
+            source_rows = all_rows if scope == "all" else ok_rows
+            vals = np.asarray(
+                [
+                    float(r.get(source_key, float("nan")))
+                    for r in source_rows
+                    if np.isfinite(float(r.get(source_key, float("nan"))))
+                ],
+                dtype=np.float64,
+            )
+            stats = _compute_summary_stats(vals)
+            row[f"{out_prefix}_n"] = int(stats["n"])
+            row[f"{out_prefix}_min"] = float(stats["min"])
+            row[f"{out_prefix}_max"] = float(stats["max"])
+            row[f"{out_prefix}_mean"] = float(stats["mean"])
+            row[f"{out_prefix}_std"] = float(stats["std"])
+            row[f"{out_prefix}_median"] = float(stats["median"])
+        method_rows.append(row)
+
+    csv_path = run_root / "benchmark_stats_by_method.csv"
+    json_path = run_root / "benchmark_stats_by_method.json"
+    txt_path = run_root / "benchmark_stats_by_method.txt"
+    _write_rows_csv(csv_path, method_rows)
+    with json_path.open("w", encoding="utf-8") as handle:
+        json.dump({"run_root": str(run_root), "methods": method_rows}, handle, indent=2)
+
+    lines: List[str] = [
+        "Benchmark statistics by method",
+        f"Run root: {run_root}",
+        "",
+    ]
+    for row in method_rows:
+        method = str(row.get("method", ""))
+        total_cases = int(row.get("total_cases", 0))
+        success_cases = int(row.get("success_cases", 0))
+        success_rate = _format_summary_value(row.get("success_rate_pct"))
+        lines.append(f"Method: {method}")
+        lines.append(f"  Cases: {total_cases} | Success: {success_cases} ({success_rate}%)")
+        for _, out_prefix, label, scope in metric_specs:
+            n = int(row.get(f"{out_prefix}_n", 0))
+            lines.append(
+                "  "
+                + f"{label} ({scope}, n={n}): "
+                + f"min={_format_summary_value(row.get(f'{out_prefix}_min'))}, "
+                + f"max={_format_summary_value(row.get(f'{out_prefix}_max'))}, "
+                + f"mean={_format_summary_value(row.get(f'{out_prefix}_mean'))}, "
+                + f"std={_format_summary_value(row.get(f'{out_prefix}_std'))}, "
+                + f"median={_format_summary_value(row.get(f'{out_prefix}_median'))}"
+            )
+        lines.append("")
+
+    txt_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return {
+        "run_root": str(run_root),
+        "rows": int(len(rows)),
+        "methods": [str(r.get("method", "")) for r in method_rows],
+        "csv_path": str(csv_path),
+        "json_path": str(json_path),
+        "txt_path": str(txt_path),
+    }
 
 
 def generate_standard_plots(run_root: Path, plots_cfg: Dict[str, Any]) -> Dict[str, Any]:
