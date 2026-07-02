@@ -83,6 +83,8 @@ def _load_plot_rows(run_dir: Path) -> List[Dict[str, Any]]:
                     "method_raw": method_raw,
                     "success": success,
                     "chamfer_symmetric": _safe_float(row.get("chamfer_symmetric")),
+                    "chamfer_y_to_z": _safe_float(row.get("chamfer_y_to_z")),
+                    "chamfer_z_to_y": _safe_float(row.get("chamfer_z_to_y")),
                     "hausdorff": _safe_float(row.get("hausdorff")),
                 }
             )
@@ -120,6 +122,31 @@ def _apply_layout(fig: go.Figure) -> go.Figure:
     fig.update_xaxes(gridcolor="lightgrey", zerolinecolor="lightgrey")
     fig.update_yaxes(gridcolor="lightgrey", zerolinecolor="lightgrey")
     return fig
+
+
+def _hex_to_rgb(color: str) -> Tuple[int, int, int]:
+    value = str(color).strip()
+    if value.startswith("#") and len(value) == 7:
+        return int(value[1:3], 16), int(value[3:5], 16), int(value[5:7], 16)
+    return 127, 127, 127
+
+
+def _blend_with_white(color: str, ratio: float) -> str:
+    ratio = min(max(float(ratio), 0.0), 1.0)
+    r, g, b = _hex_to_rgb(color)
+    rr = int(round(r + (255 - r) * ratio))
+    gg = int(round(g + (255 - g) * ratio))
+    bb = int(round(b + (255 - b) * ratio))
+    return f"rgb({rr},{gg},{bb})"
+
+
+def _blend_with_black(color: str, ratio: float) -> str:
+    ratio = min(max(float(ratio), 0.0), 1.0)
+    r, g, b = _hex_to_rgb(color)
+    rr = int(round(r * (1.0 - ratio)))
+    gg = int(round(g * (1.0 - ratio)))
+    bb = int(round(b * (1.0 - ratio)))
+    return f"rgb({rr},{gg},{bb})"
 
 
 def _save_figure(fig: go.Figure, out_base: Path, formats: Sequence[str], dpi: int) -> List[str]:
@@ -265,39 +292,43 @@ def _build_grouped_run_box_figure(
     run_a_short_label: str,
     run_b_short_label: str,
     methods: Sequence[str],
+    colors: Dict[str, str],
     metric: str,
     metric_title: str,
     log_y: bool = False,
     log_floor: float = MIN_POS_FLOAT,
 ) -> go.Figure:
     fig = go.Figure()
-    run_specs = [
-        (run_a_short_label, run_a_rows, "#1f77b4"),
-        (run_b_short_label, run_b_rows, "#ff7f0e"),
-    ]
-    for run_label, rows, color in run_specs:
-        x_vals: List[str] = []
-        y_vals: List[float] = []
-        for method in methods:
+    for method_idx, method in enumerate(methods):
+        base_color = colors.get(method, "#7f7f7f")
+        run_specs = [
+            (run_a_short_label, run_a_rows, _blend_with_white(base_color, 0.35), -0.2),
+            (run_b_short_label, run_b_rows, _blend_with_black(base_color, 0.18), 0.2),
+        ]
+        for run_label, rows, color, x_delta in run_specs:
             vals = _filter_metric_values(rows, method, metric, log_axis=log_y, log_floor=log_floor)
             if vals.size == 0:
                 continue
-            x_vals.extend([method] * int(vals.size))
-            y_vals.extend(float(v) for v in vals.tolist())
-        if not y_vals:
-            continue
-        fig.add_trace(
-            go.Box(
-                x=x_vals,
-                y=y_vals,
-                name=run_label,
-                legendgroup=run_label,
-                marker_color=color,
-                boxpoints=False,
+            x_pos = float(method_idx) + float(x_delta)
+            fig.add_trace(
+                go.Box(
+                    x=[x_pos] * int(vals.size),
+                    y=vals.tolist(),
+                    name=f"{method} ({run_label})",
+                    legendgroup=f"{method}_{run_label}",
+                    width=0.32,
+                    marker_color=color,
+                    boxpoints=False,
+                )
             )
-        )
-    fig.update_layout(boxmode="group", legend_title="Benchmark")
-    fig.update_xaxes(title_text="Method", categoryorder="array", categoryarray=list(methods))
+    fig.update_layout(boxmode="overlay", legend_title="Method / benchmark")
+    fig.update_xaxes(
+        title_text="Method",
+        tickmode="array",
+        tickvals=[float(i) for i in range(len(methods))],
+        ticktext=list(methods),
+        range=[-0.6, max(float(len(methods)) - 0.4, 0.6)],
+    )
     if log_y:
         fig.update_yaxes(type="log", title_text=f"{metric_title} (log scale)")
     else:
@@ -403,6 +434,10 @@ def main() -> int:
     plot_specs = [
         ("chamfer_ecdf", "chamfer_symmetric", "Chamfer distance (symmetric)", False, "ecdf"),
         ("chamfer_ecdf_logx", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "ecdf"),
+        ("chamfer_y_to_z_ecdf", "chamfer_y_to_z", "Chamfer distance (Y → Z)", False, "ecdf"),
+        ("chamfer_y_to_z_ecdf_logx", "chamfer_y_to_z", "Chamfer distance (Y → Z)", True, "ecdf"),
+        ("chamfer_z_to_y_ecdf", "chamfer_z_to_y", "Chamfer distance (Z → Y)", False, "ecdf"),
+        ("chamfer_z_to_y_ecdf_logx", "chamfer_z_to_y", "Chamfer distance (Z → Y)", True, "ecdf"),
         ("chamfer_box_logy", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "box"),
         ("chamfer_box_grouped_runs_logy", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "grouped_box"),
         ("chamfer_violin", "chamfer_symmetric", "Chamfer distance (symmetric)", False, "violin"),
@@ -450,6 +485,7 @@ def main() -> int:
                     run_a_short_label,
                     run_b_short_label,
                     methods,
+                    colors,
                     metric,
                     title,
                     log_y=log_flag,
