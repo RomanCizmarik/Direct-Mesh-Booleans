@@ -16,6 +16,7 @@ REPO_BENCHMARK_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_RUN_A = REPO_BENCHMARK_DIR / "artifacts" / "10k_1000_pairs_2_3_10_15_v3"
 DEFAULT_RUN_B = REPO_BENCHMARK_DIR / "artifacts" / "10k_1000_pairs_10_20_3_5_v3"
 DEFAULT_OUT = REPO_BENCHMARK_DIR / "artifacts" / "paper_plots"
+DEFAULT_LOG_FLOOR = 1e-6
 
 FONT_FAMILY = "Times New Roman"
 MIN_POS_FLOAT = float(np.nextafter(0.0, 1.0))
@@ -88,7 +89,13 @@ def _load_plot_rows(run_dir: Path) -> List[Dict[str, Any]]:
     return rows
 
 
-def _filter_metric_values(rows: Sequence[Dict[str, Any]], method: str, metric: str, log_axis: bool = False) -> np.ndarray:
+def _filter_metric_values(
+    rows: Sequence[Dict[str, Any]],
+    method: str,
+    metric: str,
+    log_axis: bool = False,
+    log_floor: float = MIN_POS_FLOAT,
+) -> np.ndarray:
     vals = [
         float(r.get(metric, float("nan")))
         for r in rows
@@ -98,7 +105,7 @@ def _filter_metric_values(rows: Sequence[Dict[str, Any]], method: str, metric: s
         return np.zeros((0,), dtype=np.float64)
     arr = np.asarray(vals, dtype=np.float64)
     if log_axis:
-        arr = np.maximum(arr, MIN_POS_FLOAT)
+        arr = np.maximum(arr, float(log_floor))
     return arr
 
 
@@ -142,11 +149,12 @@ def _build_ecdf_figure(
     metric_title: str,
     log_x: bool,
     colors: Dict[str, str],
+    log_floor: float = MIN_POS_FLOAT,
 ) -> go.Figure:
     fig = make_subplots(rows=1, cols=2, subplot_titles=[run_a_label, run_b_label], shared_yaxes=True)
     for col_idx, rows in enumerate((run_a_rows, run_b_rows), start=1):
         for method in methods:
-            vals = _filter_metric_values(rows, method, metric, log_axis=log_x)
+            vals = _filter_metric_values(rows, method, metric, log_axis=log_x, log_floor=log_floor)
             if vals.size == 0:
                 continue
             vals = np.sort(vals)
@@ -181,11 +189,12 @@ def _build_log_box_figure(
     metric: str,
     metric_title: str,
     colors: Dict[str, str],
+    log_floor: float = MIN_POS_FLOAT,
 ) -> go.Figure:
     fig = make_subplots(rows=1, cols=2, subplot_titles=[run_a_label, run_b_label], shared_yaxes=True)
     for col_idx, rows in enumerate((run_a_rows, run_b_rows), start=1):
         for method in methods:
-            vals = _filter_metric_values(rows, method, metric, log_axis=True)
+            vals = _filter_metric_values(rows, method, metric, log_axis=True, log_floor=log_floor)
             if vals.size == 0:
                 continue
             fig.add_trace(
@@ -204,6 +213,49 @@ def _build_log_box_figure(
         fig.update_yaxes(type="log", row=1, col=col_idx)
     fig.update_yaxes(title_text=f"{metric_title} (log scale)", row=1, col=1)
     fig.update_layout(legend_title="Method")
+    return _apply_layout(fig)
+
+
+def _build_violin_figure(
+    run_a_rows: Sequence[Dict[str, Any]],
+    run_b_rows: Sequence[Dict[str, Any]],
+    run_a_label: str,
+    run_b_label: str,
+    methods: Sequence[str],
+    metric: str,
+    metric_title: str,
+    colors: Dict[str, str],
+    log_y: bool = False,
+    log_floor: float = MIN_POS_FLOAT,
+) -> go.Figure:
+    fig = make_subplots(rows=1, cols=2, subplot_titles=[run_a_label, run_b_label], shared_yaxes=True)
+    for col_idx, rows in enumerate((run_a_rows, run_b_rows), start=1):
+        for method in methods:
+            vals = _filter_metric_values(rows, method, metric, log_axis=log_y, log_floor=log_floor)
+            if vals.size == 0:
+                continue
+            fig.add_trace(
+                go.Violin(
+                    y=vals,
+                    name=method,
+                    legendgroup=method,
+                    showlegend=(col_idx == 1),
+                    line_color=colors[method],
+                    fillcolor=colors[method],
+                    opacity=0.5,
+                    box_visible=True,
+                    meanline_visible=True,
+                    points=False,
+                ),
+                row=1,
+                col=col_idx,
+            )
+        fig.update_xaxes(title_text="Method", row=1, col=col_idx)
+        if log_y:
+            fig.update_yaxes(type="log", row=1, col=col_idx)
+    y_title = f"{metric_title} (log scale)" if log_y else metric_title
+    fig.update_yaxes(title_text=y_title, row=1, col=1)
+    fig.update_layout(legend_title="Method", violinmode="group")
     return _apply_layout(fig)
 
 
@@ -265,6 +317,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUT, help="Output directory for paper plots.")
     parser.add_argument("--formats", type=str, default="pdf,html", help="Comma-separated formats, e.g. pdf,html.")
     parser.add_argument("--dpi", type=int, default=180, help="Export DPI for static image formats.")
+    parser.add_argument(
+        "--log-floor",
+        type=float,
+        default=DEFAULT_LOG_FLOOR,
+        help="Lower clamp applied in log-based plots (values below are shown as this floor).",
+    )
     return parser.parse_args()
 
 
@@ -274,6 +332,7 @@ def main() -> int:
     run_b = args.run_b.resolve()
     out_dir = args.output_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    log_floor = max(float(args.log_floor), MIN_POS_FLOAT)
 
     formats = [s.strip().lower() for s in str(args.formats).split(",") if s.strip()]
     if not formats:
@@ -295,9 +354,13 @@ def main() -> int:
         ("chamfer_ecdf", "chamfer_symmetric", "Chamfer distance (symmetric)", False, "ecdf"),
         ("chamfer_ecdf_logx", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "ecdf"),
         ("chamfer_box_logy", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "box"),
+        ("chamfer_violin", "chamfer_symmetric", "Chamfer distance (symmetric)", False, "violin"),
+        ("chamfer_violin_logy", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "violin"),
         ("hausdorff_ecdf", "hausdorff", "Hausdorff distance", False, "ecdf"),
         ("hausdorff_ecdf_logx", "hausdorff", "Hausdorff distance", True, "ecdf"),
         ("hausdorff_box_logy", "hausdorff", "Hausdorff distance", True, "box"),
+        ("hausdorff_violin", "hausdorff", "Hausdorff distance", False, "violin"),
+        ("hausdorff_violin_logy", "hausdorff", "Hausdorff distance", True, "violin"),
     ]
 
     for name, metric, title, log_flag, kind in plot_specs:
@@ -313,6 +376,20 @@ def main() -> int:
                     title,
                     log_x=log_flag,
                     colors=colors,
+                    log_floor=log_floor,
+                )
+            elif kind == "violin":
+                fig = _build_violin_figure(
+                    run_a_rows,
+                    run_b_rows,
+                    run_a_label,
+                    run_b_label,
+                    methods,
+                    metric,
+                    title,
+                    colors=colors,
+                    log_y=log_flag,
+                    log_floor=log_floor,
                 )
             else:
                 fig = _build_log_box_figure(
@@ -324,6 +401,7 @@ def main() -> int:
                     metric,
                     title,
                     colors=colors,
+                    log_floor=log_floor,
                 )
             created_files.extend(_save_figure(fig, out_dir / name, formats=formats, dpi=int(args.dpi)))
         except Exception as exc:
@@ -344,6 +422,7 @@ def main() -> int:
         "run_a_label": run_a_label,
         "run_b_label": run_b_label,
         "output_dir": str(out_dir),
+        "log_floor": log_floor,
         "methods": methods,
         "created_files": created_files,
         "warnings": warnings,
