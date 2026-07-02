@@ -207,6 +207,65 @@ def _build_ecdf_figure(
     return _apply_layout(fig)
 
 
+def _build_grouped_chamfer_ecdf_figure(
+    run_a_rows: Sequence[Dict[str, Any]],
+    run_b_rows: Sequence[Dict[str, Any]],
+    run_a_label: str,
+    run_b_label: str,
+    methods: Sequence[str],
+    colors: Dict[str, str],
+    log_x: bool = False,
+    log_floor: float = MIN_POS_FLOAT,
+) -> go.Figure:
+    metric_specs: Sequence[Tuple[str, str]] = [
+        ("chamfer_symmetric", "Chamfer distance (symmetric)"),
+        ("chamfer_y_to_z", "Chamfer distance (Y \u2192 Z)"),
+        ("chamfer_z_to_y", "Chamfer distance (Z \u2192 Y)"),
+    ]
+    subplot_titles: List[str] = []
+    for _, metric_title in metric_specs:
+        subplot_titles.extend([f"{metric_title} \u2014 {run_a_label}", f"{metric_title} \u2014 {run_b_label}"])
+
+    fig = make_subplots(
+        rows=len(metric_specs),
+        cols=2,
+        subplot_titles=subplot_titles,
+        shared_yaxes=True,
+        vertical_spacing=0.08,
+        horizontal_spacing=0.06,
+    )
+    run_cols = [(1, run_a_rows), (2, run_b_rows)]
+    for row_idx, (metric, metric_title) in enumerate(metric_specs, start=1):
+        for col_idx, rows in run_cols:
+            for method in methods:
+                vals = _filter_metric_values(rows, method, metric, log_axis=log_x, log_floor=log_floor)
+                if vals.size == 0:
+                    continue
+                vals = np.sort(vals)
+                y = np.arange(1, vals.size + 1, dtype=np.float64) / float(vals.size)
+                fig.add_trace(
+                    go.Scatter(
+                        x=vals,
+                        y=y,
+                        mode="lines",
+                        name=method,
+                        legendgroup=method,
+                        showlegend=(row_idx == 1 and col_idx == 1),
+                        line=dict(color=colors[method], width=2.5),
+                    ),
+                    row=row_idx,
+                    col=col_idx,
+                )
+            fig.update_xaxes(title_text=metric_title, row=row_idx, col=col_idx)
+            if log_x:
+                fig.update_xaxes(type="log", row=row_idx, col=col_idx)
+        fig.update_yaxes(title_text="Fraction of successful cases", row=row_idx, col=1, range=[0.0, 1.0])
+    fig.update_layout(legend_title="Method")
+    fig = _apply_layout(fig)
+    fig.update_layout(height=max(1300, 420 * len(metric_specs)), width=1900, margin=dict(l=80, r=40, t=110, b=70))
+    return fig
+
+
 def _build_log_box_figure(
     run_a_rows: Sequence[Dict[str, Any]],
     run_b_rows: Sequence[Dict[str, Any]],
@@ -434,6 +493,7 @@ def main() -> int:
     plot_specs = [
         ("chamfer_ecdf", "chamfer_symmetric", "Chamfer distance (symmetric)", False, "ecdf"),
         ("chamfer_ecdf_logx", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "ecdf"),
+        ("chamfer_ecdf_grouped", "chamfer_symmetric", "Chamfer distance (symmetric)", True, "ecdf_grouped_chamfer"),
         ("chamfer_y_to_z_ecdf", "chamfer_y_to_z", "Chamfer distance (Y → Z)", False, "ecdf"),
         ("chamfer_y_to_z_ecdf_logx", "chamfer_y_to_z", "Chamfer distance (Y → Z)", True, "ecdf"),
         ("chamfer_z_to_y_ecdf", "chamfer_z_to_y", "Chamfer distance (Z → Y)", False, "ecdf"),
@@ -463,6 +523,17 @@ def main() -> int:
                     title,
                     log_x=log_flag,
                     colors=colors,
+                    log_floor=log_floor,
+                )
+            elif kind == "ecdf_grouped_chamfer":
+                fig = _build_grouped_chamfer_ecdf_figure(
+                    run_a_rows,
+                    run_b_rows,
+                    run_a_label,
+                    run_b_label,
+                    methods,
+                    colors=colors,
+                    log_x=log_flag,
                     log_floor=log_floor,
                 )
             elif kind == "violin":
