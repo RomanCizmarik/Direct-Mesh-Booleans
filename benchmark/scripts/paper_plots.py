@@ -210,29 +210,25 @@ def _build_ecdf_figure(
 def _build_grouped_chamfer_ecdf_figure(
     run_a_rows: Sequence[Dict[str, Any]],
     run_b_rows: Sequence[Dict[str, Any]],
-    run_a_label: str,
-    run_b_label: str,
+    run_a_short_label: str,
+    run_b_short_label: str,
     methods: Sequence[str],
     colors: Dict[str, str],
     log_x: bool = False,
     log_floor: float = MIN_POS_FLOAT,
 ) -> go.Figure:
     metric_specs: Sequence[Tuple[str, str]] = [
-        ("chamfer_symmetric", "Chamfer distance (symmetric)"),
-        ("chamfer_y_to_z", "Chamfer distance (Y \u2192 Z)"),
-        ("chamfer_z_to_y", "Chamfer distance (Z \u2192 Y)"),
+        ("chamfer_symmetric", "Symmetric Chamfer distance (log scale)"),
+        ("chamfer_y_to_z", "Result to Reference Chamfer distance (log scale)"),
+        ("chamfer_z_to_y", "Reference to Result Chamfer distance (log scale)"),
     ]
-    subplot_titles: List[str] = []
-    for _, metric_title in metric_specs:
-        subplot_titles.extend([f"{metric_title} \u2014 {run_a_label}", f"{metric_title} \u2014 {run_b_label}"])
 
     fig = make_subplots(
         rows=len(metric_specs),
         cols=2,
-        subplot_titles=subplot_titles,
         shared_yaxes=True,
         vertical_spacing=0.08,
-        horizontal_spacing=0.06,
+        horizontal_spacing=0.05,
     )
     run_cols = [(1, run_a_rows), (2, run_b_rows)]
     for row_idx, (metric, metric_title) in enumerate(metric_specs, start=1):
@@ -260,9 +256,41 @@ def _build_grouped_chamfer_ecdf_figure(
             if log_x:
                 fig.update_xaxes(type="log", row=row_idx, col=col_idx)
         fig.update_yaxes(title_text="Fraction of successful cases", row=row_idx, col=1, range=[0.0, 1.0])
-    fig.update_layout(legend_title="Method")
+    col_a = str(run_a_short_label).replace(" ", "-")
+    col_b = str(run_b_short_label).replace(" ", "-")
+    dom_a = list(getattr(fig.layout, "xaxis").domain) if getattr(fig.layout, "xaxis", None) is not None else [0.0, 0.45]
+    dom_b = list(getattr(fig.layout, "xaxis2").domain) if getattr(fig.layout, "xaxis2", None) is not None else [0.55, 1.0]
+    x_a = 0.5 * (float(dom_a[0]) + float(dom_a[1]))
+    x_b = 0.5 * (float(dom_b[0]) + float(dom_b[1]))
+    fig.add_annotation(
+        x=x_a,
+        y=1.055,
+        xref="paper",
+        yref="paper",
+        text=f"<b>{col_a}</b>",
+        showarrow=False,
+        xanchor="center",
+        font=dict(size=26, family=FONT_FAMILY),
+    )
+    fig.add_annotation(
+        x=x_b,
+        y=1.055,
+        xref="paper",
+        yref="paper",
+        text=f"<b>{col_b}</b>",
+        showarrow=False,
+        xanchor="center",
+        font=dict(size=26, family=FONT_FAMILY),
+    )
+    fig.update_layout(
+        legend_title="Method",
+        legend=dict(
+            title_font=dict(size=26, family=FONT_FAMILY),
+            font=dict(size=24, family=FONT_FAMILY),
+        ),
+    )
     fig = _apply_layout(fig)
-    fig.update_layout(height=max(1300, 420 * len(metric_specs)), width=1900, margin=dict(l=80, r=40, t=110, b=70))
+    fig.update_layout(height=max(1300, 420 * len(metric_specs)), width=1650, margin=dict(l=80, r=170, t=130, b=70))
     return fig
 
 
@@ -529,8 +557,8 @@ def main() -> int:
                 fig = _build_grouped_chamfer_ecdf_figure(
                     run_a_rows,
                     run_b_rows,
-                    run_a_label,
-                    run_b_label,
+                    run_a_short_label,
+                    run_b_short_label,
                     methods,
                     colors=colors,
                     log_x=log_flag,
