@@ -19,6 +19,9 @@ DEFAULT_OUT = REPO_BENCHMARK_DIR / "artifacts" / "paper_plots"
 DEFAULT_LOG_FLOOR = 1e-6
 
 FONT_FAMILY = "Times New Roman"
+DEFAULT_BASE_FONT_SIZE = 20
+DEFAULT_AXIS_TITLE_FONT_SIZE = 30
+DEFAULT_AXIS_TICK_FONT_SIZE = 18
 MIN_POS_FLOAT = float(np.nextafter(0.0, 1.0))
 DISPLAY_NAME_ALIASES = {
     "direct_mesh_booleans": "DMB",
@@ -26,6 +29,10 @@ DISPLAY_NAME_ALIASES = {
     "mine": "DMB",
     "mine_extension": "DMB_extension",
 }
+
+BASE_FONT_SIZE = DEFAULT_BASE_FONT_SIZE
+AXIS_TITLE_FONT_SIZE = DEFAULT_AXIS_TITLE_FONT_SIZE
+AXIS_TICK_FONT_SIZE = DEFAULT_AXIS_TICK_FONT_SIZE
 
 
 def _safe_float(value: Any) -> float:
@@ -114,13 +121,23 @@ def _filter_metric_values(
 def _apply_layout(fig: go.Figure) -> go.Figure:
     fig.update_layout(
         plot_bgcolor="white",
-        font=dict(size=20, family=FONT_FAMILY),
+        font=dict(size=BASE_FONT_SIZE, family=FONT_FAMILY),
         width=1800,
         height=850,
         margin=dict(l=80, r=40, t=90, b=80),
     )
-    fig.update_xaxes(gridcolor="lightgrey", zerolinecolor="lightgrey")
-    fig.update_yaxes(gridcolor="lightgrey", zerolinecolor="lightgrey")
+    fig.update_xaxes(
+        gridcolor="lightgrey",
+        zerolinecolor="lightgrey",
+        title_font=dict(size=AXIS_TITLE_FONT_SIZE, family=FONT_FAMILY),
+        tickfont=dict(size=AXIS_TICK_FONT_SIZE, family=FONT_FAMILY),
+    )
+    fig.update_yaxes(
+        gridcolor="lightgrey",
+        zerolinecolor="lightgrey",
+        title_font=dict(size=AXIS_TITLE_FONT_SIZE, family=FONT_FAMILY),
+        tickfont=dict(size=AXIS_TICK_FONT_SIZE, family=FONT_FAMILY),
+    )
     return fig
 
 
@@ -270,7 +287,7 @@ def _build_grouped_chamfer_ecdf_figure(
         text=f"<b>{col_a}</b>",
         showarrow=False,
         xanchor="center",
-        font=dict(size=26, family=FONT_FAMILY),
+        font=dict(size=30, family=FONT_FAMILY),
     )
     fig.add_annotation(
         x=x_b,
@@ -280,13 +297,13 @@ def _build_grouped_chamfer_ecdf_figure(
         text=f"<b>{col_b}</b>",
         showarrow=False,
         xanchor="center",
-        font=dict(size=26, family=FONT_FAMILY),
+        font=dict(size=30, family=FONT_FAMILY),
     )
     fig.update_layout(
         legend_title="Method",
         legend=dict(
-            title_font=dict(size=26, family=FONT_FAMILY),
-            font=dict(size=24, family=FONT_FAMILY),
+            title_font=dict(size=36, family=FONT_FAMILY),
+            font=dict(size=34, family=FONT_FAMILY),
         ),
     )
     fig = _apply_layout(fig)
