@@ -1888,13 +1888,65 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
     {
         OpenMesh::FProp< std::bitset<NBIT>> labeling(m_mesh, m_pFaceIOLabeling);
         OpenMesh::FProp< bool > intersectionFace(m_mesh, m_pIntersectionFace);
+        OpenMesh::FProp< bool > intersectionAdjacentFace(false, m_mesh);
+        OpenMesh::EProp<bool> pIntersectionEdge(m_mesh, m_pIntersectionEdge);
+
+        OpenMesh::VProp<bool> pIntersectionVertex(false, m_mesh);
+
+        for (auto eh : m_mesh.edges())
+        {
+            if (pIntersectionEdge[eh])
+            {
+                auto v0 = eh.v0();
+                auto v1 = eh.v1();
+                pIntersectionVertex[v0] = true;
+                pIntersectionVertex[v1] = true;
+            }
+        }
+
+        //for (auto fh : m_mesh.faces())
+        //{
+        //    if (intersectionFace[fh])
+        //    {
+        //        continue;
+        //    }
+
+        //    int cnt = 0;
+        //    for (auto fvh : fh.vertices())
+        //    {
+        //        if (pIntersectionVertex[fvh])
+        //        {
+        //            ++cnt;
+        //        }
+        //    }
+
+        //    if (cnt > 1)
+        //    {
+        //        std::unordered_set<std::bitset<NBIT>> adjacentLabelings;
+
+        //        for (auto ffh : fh.faces())
+        //        {
+        //            if (intersectionFace[ffh])
+        //            {
+        //                auto l = labeling[ffh];
+        //                adjacentLabelings.insert(l);
+        //            }
+        //        }
+
+        //        if (adjacentLabelings.size() == 1)
+        //        {
+        //            intersectionAdjacentFace[fh] = true;
+        //            labeling[fh] = *adjacentLabelings.begin();
+        //        }
+        //    }
+        //}
 
         MeshType insideMesh;
         MeshType outsideMesh;
 
         for(auto fh : m_mesh.faces())
         {
-            if (!intersectionFace[fh])
+            if (!(intersectionFace[fh] /*|| intersectionAdjacentFace[fh]*/))
             {
                 continue;
             }
@@ -1913,8 +1965,8 @@ inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
         insideMesh.update_normals();
         outsideMesh.update_normals();
 
-        OpenMesh::IO::write_mesh(insideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesInside.stl");
-        OpenMesh::IO::write_mesh(outsideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesOutside.stl");
+        OpenMesh::IO::write_mesh(insideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesInside.obj");
+        OpenMesh::IO::write_mesh(outsideMesh, path +"meshOperand" + std::to_string(m_intLabel) + "IntFacesOutside.obj");
     }
 
     //inside outside components
@@ -2546,7 +2598,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             assigneIntersectionCurveIds();
 
-#if 1
+#if 0
             for (auto fh : component)
             {
                 //if (intersectionFace[fh])
@@ -2694,7 +2746,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 std::vector<tBracket> brackets;
                 std::vector<double> splitParams;
                 //const int sampleCount = 16;
-                const int sampleCount = std::min( std::max((int)std::ceil(m_mesh.calc_edge_length(sEh) / (edgeSplitLimit)), 1), 16);
+                const int sampleCount = std::min( std::max((int)std::ceil(m_mesh.calc_edge_length(sEh) / (edgeSplitLimit)), 5), 16);
                 const double rootEps = 1e-6;
 
                 double prevT = tStart;
@@ -3810,6 +3862,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         {
             //further FWN based component split
             FWNBasedComponentSplit(component);
+            //FWNBasedComponentSplit(splitAndRelabelComponent(component, edgeSplitLimit, ma));
 
             //TODO: if there are any issues with FWN, enable this line
             //Strictly speaking this is not neccessary... We have only split some edges/faces - the FWN field did not change at all
@@ -4646,14 +4699,14 @@ inline void DMB::MatrixMesh<MeshType>::saveMatrixMesh(std::string outputFileName
 template<typename MeshType>
 inline std::vector<typename MeshType::FaceHandle> DMB::MatrixMesh<MeshType>::splitAndRelabelComponent(const std::vector<tFaceHandle>& component, double edgeLenghtSplitLimit, MeshArrangement<MeshType>& ma)
 {
-    {
-        MeshType meshPart;
-        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component, true);
-        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-        opt += OpenMesh::IO::Options::FaceColor;
+    //{
+    //    MeshType meshPart;
+    //    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, component, true);
+    //    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+    //    opt += OpenMesh::IO::Options::FaceColor;
 
-        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_component" + std::to_string(m_intLabel) + "_before_split.ply", opt);
-    }
+    //    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_component" + std::to_string(m_intLabel) + "_before_split.ply", opt);
+    //}
 
 
     OpenMesh::EProp<bool> pIntersectionEdge(m_mesh, m_pIntersectionEdge);
@@ -4844,13 +4897,13 @@ inline std::vector<typename MeshType::FaceHandle> DMB::MatrixMesh<MeshType>::spl
             }
 
             //update q
-            //for (auto newEh : OpenMesh::make_smart(newVh, m_mesh).edges())
-            //{
-            //    if (edgeLengths[newEh] > edgeLenghtSplitLimit)
-            //    {
-            //        q.push(newEh);
-            //    }
-            //}
+            for (auto newEh : OpenMesh::make_smart(newVh, m_mesh).edges())
+            {
+                if (edgeLengths[newEh] > edgeLenghtSplitLimit)
+                {
+                    q.push(newEh);
+                }
+            }
         }
 
         //flip
@@ -4877,7 +4930,7 @@ inline std::vector<typename MeshType::FaceHandle> DMB::MatrixMesh<MeshType>::spl
             auto vr = sEh.h0().next().to();
             auto vl = sEh.h1().next().to();
 
-            if ((m_mesh.point(vl) - m_mesh.point(vr)).length() < edgeLengths[eh] && pNewVertex[vl] && pNewVertex[vr])
+            if (((m_mesh.point(vl) - m_mesh.point(vr)).length() < edgeLengths[eh] || !edgeIsDelaunay(m_mesh, eh)) && pNewVertex[vl] && pNewVertex[vr])
             {
                 q.push(eh);
             }
@@ -4903,13 +4956,14 @@ inline std::vector<typename MeshType::FaceHandle> DMB::MatrixMesh<MeshType>::spl
                 continue;
             }
 
-            m_mesh.flip(eh);
+            //m_mesh.flip(eh);
 
             //update edge length
             edgeLengths[eh] = m_mesh.calc_edge_length(eh);
 
         }
 
+#if 0
         //TODO; rework this ffs, just tag edges, or something...
         //collapse
         edges.clear();
@@ -4936,16 +4990,16 @@ inline std::vector<typename MeshType::FaceHandle> DMB::MatrixMesh<MeshType>::spl
                 m_mesh.collapse(sEh.h0());
             }
         }
+#endif
 
+        //{
+        //    MeshType meshPart;
+        //    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
+        //    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+        //    opt += OpenMesh::IO::Options::FaceColor;
 
-        {
-            MeshType meshPart;
-            DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
-            OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-            opt += OpenMesh::IO::Options::FaceColor;
-
-            OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/refinement_component" + std::to_string(m_intLabel) + "_" + std::to_string(i) + ".ply", opt);
-        }
+        //    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/refinement_component" + std::to_string(m_intLabel) + "_" + std::to_string(i) + ".ply", opt);
+        //}
     }
 
     //clean component vector
@@ -4967,33 +5021,33 @@ inline std::vector<typename MeshType::FaceHandle> DMB::MatrixMesh<MeshType>::spl
     }
 
 
-    //debug
-    for (auto fh : componentCopy)
-    {
-        if (m_mesh.status(fh).deleted())
-        {
-            continue;
-        }
+    ////debug
+    //for (auto fh : componentCopy)
+    //{
+    //    if (m_mesh.status(fh).deleted())
+    //    {
+    //        continue;
+    //    }
 
-        m_mesh.set_color(fh, { 128, 128, 128 });
+    //    m_mesh.set_color(fh, { 128, 128, 128 });
 
-        if (intersectionFace[fh])
-        {
-            typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
-            m_mesh.set_color(fh, c);
+    //    if (intersectionFace[fh])
+    //    {
+    //        typename MeshType::Color c = labeling[fh].count() > 0 ? MeshType::Color(255, 0, 0) : MeshType::Color(0, 255, 0);
+    //        m_mesh.set_color(fh, c);
 
-        }
+    //    }
 
-    }
+    //}
 
-    {
-        MeshType meshPart;
-        DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
-        OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
-        opt += OpenMesh::IO::Options::FaceColor;
+    //{
+    //    MeshType meshPart;
+    //    DMB::copyMeshPart<MeshType>(m_mesh, meshPart, componentCopy, true);
+    //    OpenMesh::IO::Options opt = OpenMesh::IO::Options::Default;
+    //    opt += OpenMesh::IO::Options::FaceColor;
 
-        OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_component" + std::to_string(m_intLabel) + "_after_split.ply", opt);
-    }
+    //    OpenMesh::IO::write_mesh(meshPart, "C:/skola/PhD/VUT/booleans_paper/extension/debug/whole_component" + std::to_string(m_intLabel) + "_after_split.ply", opt);
+    //}
 
     return componentCopy;
 }

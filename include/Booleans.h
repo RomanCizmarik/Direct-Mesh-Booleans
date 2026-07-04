@@ -176,6 +176,7 @@ namespace DMB
         right.copyMAProperties(copyFunctor);
 
         //left.buildDebugMesh();
+        //right.buildDebugMesh();
 
         if (!left.disconnectComponents(ma, right))
         {
@@ -193,6 +194,7 @@ namespace DMB
         right.classifyIsolatedComponents(left);
 
         //left.buildDebugMesh();
+        //right.buildDebugMesh();
 
         left.classifyMeshArrangement(ma, 0, predicate);
         right.classifyMeshArrangement(ma, 1, predicate);
