@@ -16,33 +16,32 @@ namespace DMB
     //! 
     //! \param   soup        The triangle soup.
     //! \param   ingredient  Mesh that shall be added.
-    //! \param   transform   Some transformation of the mesh. The triangle soup puts them all into one space.
     //! \param   label       Label of the mesh. This is used to remember which trangle belongs to which mesh.
     ////////////////////////////////////////////////////////////////////////////////////////////////////
-    //template <typename MeshType>
-    //inline void addMesh(TriangleSoup& soup, const MeshType& ingredient, const TransformMatrix& transform, uint label)
-    //{
-    //    uint vertex_start = uint(std::size(soup.coordinates) / 3);
+    template <typename MeshType>
+    inline void addMesh(TriangleSoup& soup, const MeshType& ingredient, uint label)
+    {
+        uint vertex_start = uint(std::size(soup.coordinates) / 3);
 
-    //    for (auto vh : ingredient.vertices())
-    //    {
-    //        auto worldSpacePoint = transform * ingredient.point(vh);
+        for (auto vh : ingredient.vertices())
+        {
+            const auto& p = ingredient.point(vh);
 
-    //        soup.coordinates.push_back(worldSpacePoint[0]);
-    //        soup.coordinates.push_back(worldSpacePoint[1]);
-    //        soup.coordinates.push_back(worldSpacePoint[2]);
-    //    }
+            soup.coordinates.push_back(p[0]);
+            soup.coordinates.push_back(p[1]);
+            soup.coordinates.push_back(p[2]);
+        }
 
-    //    for (auto fh : ingredient.faces())
-    //    {
-    //        for (auto vh : fh.vertices_ccw())
-    //        {
-    //            soup.triangles.push_back(vertex_start + vh.idx());
-    //        }
+        for (auto fh : ingredient.faces())
+        {
+            for (auto vh : fh.vertices_ccw())
+            {
+                soup.triangles.push_back(vertex_start + vh.idx());
+            }
 
-    //        soup.labels.push_back(label);
-    //    }
-    //}
+            soup.labels.push_back(label);
+        }
+    }
 
     inline void addMesh(TriangleSoup& soup, const InputTriangleMesh& ingredient)
     {

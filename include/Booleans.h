@@ -288,6 +288,48 @@ namespace DMB
         return meshBoolean(output, soup, predicateAdd, progress, timings);
     }
 
+
+    template <typename MeshType>
+    bool meshUnion(MeshType& output,
+        const MeshType& lhs, const MeshType& rhs,
+        MeshBooleansTimings* timings = nullptr)
+    {
+        auto predicateAdd = [&](int meshOperandLabel, const std::bitset<NBIT>& faceLabel) -> int
+            {
+                if (meshOperandLabel == 0 && faceLabel[1] == 0 && faceLabel[0] == 0)
+                {
+                    return 1;
+                }
+
+                if (meshOperandLabel == 1 && faceLabel[0] == 0 && faceLabel[1] == 0)
+                {
+                    return 1;
+                }
+
+                //and we want the coplanars as well
+                if (faceLabel[0] == 1 && faceLabel[1] == 1)
+                {
+                    return 1;
+                }
+
+                return 0;
+            };
+
+        TriangleSoup soup{};
+
+        uint label = 0;
+        for (const MeshType& mesh : {lhs, rhs})
+        {
+            addMesh(soup, mesh, label);
+
+            ++label;
+        }
+
+        auto progress = []() { return true; };
+
+        return meshBoolean(output, soup, predicateAdd, progress, timings);
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 //! \brief   Performs mesh intersection using new connected components analysis approach.
 //!
@@ -332,8 +374,47 @@ namespace DMB
             m.label = label;
             load(filename, m.coordinates, m.triangles);
             addMesh(soup, m);
-            //save("C:/skola/PhD/Samples/booleans/input"+std::to_string(label) + ".obj", m.coordinates, m.triangles);
 
+            ++label;
+        }
+
+        auto progress = []() { return true; };
+
+        return meshBoolean(output, soup, predicateInt, progress, timings);
+    }
+
+    template <typename MeshType>
+    bool meshIntersection(MeshType& output,
+        const MeshType& lhs, const MeshType& rhs,
+        MeshBooleansTimings* timings = nullptr)
+    {
+        auto predicateInt = [](int meshOperandLabel, const std::bitset<NBIT>& faceLabel) -> int
+            {
+                if (meshOperandLabel == 0 && faceLabel[1] == 1 && faceLabel[0] == 0)
+                {
+                    return 1;
+                }
+
+                if (meshOperandLabel == 1 && faceLabel[0] == 1 && faceLabel[1] == 0)
+                {
+                    return 1;
+                }
+
+                //and we want the coplanars as well
+                if (faceLabel[0] == 1 && faceLabel[1] == 1)
+                {
+                    return 1;
+                }
+
+                return 0;
+            };
+
+        TriangleSoup soup{};
+
+        uint label = 0;
+        for (const MeshType& mesh : { lhs, rhs })
+        {
+            addMesh(soup, mesh, label);
             ++label;
         }
 
@@ -380,6 +461,46 @@ namespace DMB
             m.label = label;
             load(filename, m.coordinates, m.triangles);
             addMesh(soup, m);
+            ++label;
+        }
+
+        auto progress = []() { return true; };
+
+        return meshBoolean(output, soup, predicateSub, progress, timings);
+    }
+
+    template <typename MeshType>
+    bool meshSubtraction(MeshType& output,
+        const MeshType& lhs, const MeshType& rhs,
+        MeshBooleansTimings* timings = nullptr)
+    {
+        auto predicateSub = [](int meshOperandLabel, const std::bitset<NBIT>& faceLabel) -> int
+            {
+                if (meshOperandLabel == 0 && faceLabel[1] == 1 && faceLabel[0] == 0)
+                {
+                    return 1;
+                }
+
+                if (meshOperandLabel == 1 && faceLabel[0] == 1 && faceLabel[1] == 0)
+                {
+                    return 1;
+                }
+
+                //and we want the coplanars as well
+                if (faceLabel[0] == 1 && faceLabel[1] == 1)
+                {
+                    return 1;
+                }
+
+                return 0;
+            };
+
+        TriangleSoup soup{};
+
+        uint label = 0;
+        for (const MeshType& mesh : { lhs, rhs })
+        {
+            addMesh(soup, mesh, label);
             ++label;
         }
 
