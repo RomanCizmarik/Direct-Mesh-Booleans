@@ -2310,7 +2310,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             auto componentCopy = component;
 
-            //DEBUG
+            ////DEBUG
             //{
 
             //    for (auto fh : componentCopy)
@@ -3553,7 +3553,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             //updateMatrices();
 
-            //DEBUG
+            ////DEBUG
             //{
             //    int cc = 0;
 
@@ -3793,11 +3793,13 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             }
 
             std::unordered_map < std::bitset<NBIT>, double > labelToLabelingVolumeMap;
+            std::unordered_map < std::bitset<NBIT>, double > labelToMaxLabelingVolumeMap;
 
             for (auto [label, classifyingComponentId] : labelToLabelingComponentMap)
             {
                 //TODO: should be bigfloat
                 double v = 0;
+                double maxV = std::numeric_limits<double>::lowest();
                 for (auto id : classifyingComponentId)
                 {
                     if (id < 0)
@@ -3805,9 +3807,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                         continue;
                     }
                     v += ma.m_componentsVolume[id];
+                    maxV = std::max(maxV, ma.m_componentsVolume[id]);
                 }
 
                 labelToLabelingVolumeMap[label] = v;
+                labelToMaxLabelingVolumeMap[label] = maxV;
             }
 
             double maxVolume = std::numeric_limits<double>::lowest();
@@ -3815,35 +3819,110 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //assume conflicting labeling will be resolved
             conflictingLabeling = false;
 
+            bool degeneratedVolumesOnly = true;
+            bool allReasonalbleVolumes = true;
+
             for (auto [key, val] : labelToLabelingVolumeMap)
+            {
+                //if (val > maxVolume)
+                //{
+                //    maxVolume = val;
+                //    seedLabel = key;
+                //}
+
+                if (val > 1e-3)
+                {
+                    degeneratedVolumesOnly = false;
+                }
+
+                if (val < 1e-3)
+                {
+                    allReasonalbleVolumes = false;
+                }
+            }
+
+            for (auto [key, val] : labelToMaxLabelingVolumeMap)
             {
                 if (val > maxVolume)
                 {
                     maxVolume = val;
                     seedLabel = key;
                 }
+            }
 
+            bool conflictingMaxVolumeClassification = false;
+            for (auto [key, val] : labelToMaxLabelingVolumeMap)
+            {
                 if (val == maxVolume && seedLabel != key)
                 {
-                    //std::cout << "volume:" << val << " label: " << key << " labeling component ids size: " << labelToLabelingComponentMap[key].size() << std::endl;
-
-                    if (std::fabs(val) > 1e-5 && componentId < maxComponents)
-                    {
-                        //Volume is too big to use e-surface, use further FWN based splitting
-                        //And this component was not yet processed via FWN cuts
-                        useFloodLabeling = false;
-
-                    }
-                    else
-                    {
-                        //still conflicting => e-surface
-                        //conflictingLabeling = true;
-                        //TODO (for variadic): I should put 0 in place of the input mesh, that labeled this face/component
-                        seedLabel = 0;
-                    }
+                    conflictingMaxVolumeClassification = true;
                 }
             }
+
+            //e-surface default 
+            seedLabel = 0;
+
+            if (componentId < maxComponents)
+            {
+                //std::cout << "maxVolume:" << maxVolume << " seedLabel: " << seedLabel  << std::endl;
+                //std::cout << "conflictingMaxVolumeClassification:" << conflictingMaxVolumeClassification << " degeneratedVolumesOnly: " << degeneratedVolumesOnly<< " allReasonalbleVolumes: " << allReasonalbleVolumes << std::endl;
+
+                if (conflictingMaxVolumeClassification && degeneratedVolumesOnly)
+                {
+                    //e-surface classic
+                    seedLabel = 0;
+                }
+                
+                if (conflictingMaxVolumeClassification && allReasonalbleVolumes)
+                {
+                    //try fwn cut
+                    useFloodLabeling = false;
+                }
+            }
+            
+
+
+            //if (degeneratedVolumesOnly)
+            //{
+            //    for (auto [key, val] : labelToLabelingVolumeMap)
+            //    {
+            //        //if (val > maxVolume)
+            //        //{
+            //        //    maxVolume = val;
+            //        //    seedLabel = key;
+            //        //}
+
+            //        if (val == maxVolume && seedLabel != key && componentId < maxComponents && val > 1e-3)
+            //        {
+            //            //std::cout << "volume:" << val << " label: " << key << " labeling component ids size: " << labelToLabelingComponentMap[key].size() << std::endl;
+            //            useFloodLabeling = false;
+            //        }
+            //        else
+            //        {
+            //            //still conflicting => e-surface
+            //            //conflictingLabeling = true;
+            //            //TODO (for variadic): I should put 0 in place of the input mesh, that labeled this face/component
+            //            seedLabel = 0;
+            //        }
+            //    }
+            //}
+            ////we have reasonable classifying components with conflicting classifications
+            //else
+            //{
+            //    //and this component was not processed yet
+            //    if (componentId < maxComponents)
+            //    {
+            //        useFloodLabeling = false; //->fwn split
+            //    }
+            //    else
+            //    {
+            //        // still conflicting = > e - surface
+            //        //TODO (for variadic): I should put 0 in place of the input mesh, that labeled this face/component
+            //        seedLabel = 0;
+            //    }
+            //}
         }
+
 
         if (useFloodLabeling) 
         {

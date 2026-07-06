@@ -266,7 +266,7 @@ inline void DMB::MeshArrangement<MeshType>::classifyFaces()
 
                 if (orientationRL != orientationLR)
                 {
-                    std::cout << "unorientable edge, should not happen!" << std::endl;
+                    //std::cout << "unorientable edge, should not happen!" << std::endl;
                     assert(false);
                 }
 
