@@ -3946,9 +3946,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
             //TODO: if there are any issues with FWN, enable this line
             //Strictly speaking this is not neccessary... We have only split some edges/faces - the FWN field did not change at all
             //m_accAccessor.setDirty();
-        }
-
-        
+        }        
     }
 
     //reset tagged
@@ -3957,6 +3955,205 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         m_mesh.status(fh).set_tagged(false);
     }
 
+#if 1
+    //deal with dangling not labeled components
+    if (!notLabeledComponents.empty())
+    {
+        std::map<uint, uint> maTriangleToComponentMap;
+        std::vector<double> componentsVolume;
+
+        for (uint componentId = 0; componentId < components.size(); ++componentId)
+        {
+            const auto& component = components[componentId];
+            std::vector<OpenMesh::SmartFaceHandle> smartComponent;
+
+            for (auto fh : component)
+            {
+                uint maTriangle = m_tIdToOriginalTId[pFhToMaFh[fh]];
+                maTriangleToComponentMap[maTriangle] = componentId;
+                smartComponent.push_back(OpenMesh::make_smart(fh, m_mesh));
+            }
+
+            int sign = calcVolumeSignExact(smartComponent);
+            double volume = calcSignedVolume(smartComponent);
+            double volumeSize = std::abs(volume);
+            componentsVolume.push_back(volumeSize * sign);
+        }
+
+        //first, merge not labeled components
+        std::vector<std::vector<tFaceHandle>> mergedUnlabeledComponents;
+        std::unordered_set<int> visitedComponents;
+
+        for (auto componentId : notLabeledComponents)
+        {
+            if (visitedComponents.find(componentId) != visitedComponents.end())
+            {
+                continue;
+            }
+
+            const auto& currentComponent = components[componentId];
+            visitedComponents.insert(componentId);
+
+            std::vector<tFaceHandle> mergedComponent;
+            std::queue<tFaceHandle> facesToVisit;
+
+            for (auto fh : currentComponent)
+            {
+                facesToVisit.push(fh);
+            }
+
+            while (!facesToVisit.empty())
+            {
+                auto topFace = OpenMesh::make_smart(facesToVisit.front(), m_mesh);
+                facesToVisit.pop();
+
+                if (topFace.tagged() || topFace.deleted())
+                {
+                    continue;
+                }
+
+                //add to this merged component
+                mergedComponent.push_back(topFace);
+
+                uint maTriangle = m_tIdToOriginalTId[pFhToMaFh[topFace]];
+                auto seedOrigin = ma.m_labels[maTriangle];
+
+                std::vector<uint> faceVertices;
+                faceVertices.reserve(3);
+                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 0]);
+                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 1]);
+                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 2]);
+
+                int e0 = ma.getVertexEdgeId(faceVertices[0], faceVertices[1]);
+                int e1 = ma.getVertexEdgeId(faceVertices[1], faceVertices[2]);
+                int e2 = ma.getVertexEdgeId(faceVertices[2], faceVertices[0]);
+
+                for (auto e : { e0,e1,e2 })
+                {
+                    //TODO: should it be only non manifold edges? maybe not
+                    if (!ma.m_intersectionEdgeProp[e]/* && !ma.isEdgeManifold(e)*/) //this is self-intersecting edge
+                    {
+                        //look at adjacent faces and take their labeling with component volume
+                        for (auto adjFace : ma.getFaceAdjacentEdges(e))
+                        {
+                            //skip different meshes
+                            if (ma.m_labels[adjFace] != seedOrigin)
+                            {
+                                continue;
+                            }
+
+                            auto otherComponentId = maTriangleToComponentMap[adjFace];
+
+                            if (otherComponentId == componentId)
+                            {
+                                continue;
+                            }
+
+                            //skip not labeled component as well
+                            if (componentsLabels[otherComponentId][NBIT - 2] == 1 && visitedComponents.find(otherComponentId) == visitedComponents.end())
+                            {
+                                const auto& otherUnlabeledComponent = components[otherComponentId];
+
+                                for (auto otherCmpFh : otherUnlabeledComponent)
+                                {
+                                    facesToVisit.push(otherCmpFh);
+                                }
+
+                                visitedComponents.insert(otherComponentId);
+                            }
+                        }
+                    }
+                }
+
+
+                //mark this face as processed
+                m_mesh.status(topFace).set_tagged(true);
+            }
+
+            mergedUnlabeledComponents.push_back(mergedComponent);
+        }
+
+        for (const auto& mergedComponent : mergedUnlabeledComponents)
+        {
+            double largestVolume = std::numeric_limits<double>::lowest();
+            int largestNeighbouringComponent = -1;
+
+            for (auto fh : mergedComponent)
+            {
+                uint maTriangle = m_tIdToOriginalTId[pFhToMaFh[fh]];
+                auto seedOrigin = ma.m_labels[maTriangle];
+
+                std::vector<uint> faceVertices;
+                faceVertices.reserve(3);
+                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 0]);
+                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 1]);
+                faceVertices.push_back(ma.m_triangles[maTriangle * 3 + 2]);
+
+                int e0 = ma.getVertexEdgeId(faceVertices[0], faceVertices[1]);
+                int e1 = ma.getVertexEdgeId(faceVertices[1], faceVertices[2]);
+                int e2 = ma.getVertexEdgeId(faceVertices[2], faceVertices[0]);
+
+                for (auto e : { e0,e1,e2 })
+                {
+                    if (!ma.m_intersectionEdgeProp[e] /*&& !ma.isEdgeManifold(e)*/) //this is self-intersecting edge
+                    {
+                        //look at adjacent faces and take their labeling with component volume
+                        for (auto adjFace : ma.getFaceAdjacentEdges(e))
+                        {
+                            //skip different meshes
+                            if (ma.m_labels[adjFace] != seedOrigin)
+                            {
+                                continue;
+                            }
+
+                            auto otherComponentId = maTriangleToComponentMap[adjFace];
+
+                            //if (otherComponentId == componentId)
+                            //{
+                            //    continue;
+                            //}
+
+                            //skip not labeled component as well
+                            if (componentsLabels[otherComponentId][NBIT - 2] == 1)
+                            {
+                                continue;
+                            }
+
+                            auto otherComponentVolume = componentsVolume[otherComponentId];
+
+                            if (otherComponentVolume > largestVolume)
+                            {
+                                largestVolume = otherComponentVolume;
+                                largestNeighbouringComponent = otherComponentId;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (largestNeighbouringComponent != -1)
+            {
+                auto bestLabel = componentsLabels[largestNeighbouringComponent];
+
+                for (auto fh : mergedComponent)
+                {
+                    labeling[fh] = bestLabel;
+                }
+            }
+            else
+            {
+                //This is completely isolated component - this needs to be classified via GWN
+                m_isolatedComponents.push_back({ mergedComponent.begin(), mergedComponent.end() });
+            }
+        }
+
+        //reset tagged
+        for (auto fh : m_mesh.faces())
+        {
+            m_mesh.status(fh).set_tagged(false);
+        }
+    }
+#endif
     return true;
 }
 
@@ -4339,18 +4536,25 @@ inline void DMB::MatrixMesh<MeshType>::classifyIsolatedComponents(MatrixMesh<Mes
     //we need to build FWN of the other mesh
     auto acc = other.getAcceleratorAccessor()->getFastWindingNumber();
 
-    static const int nSamples = 10;
+    static const int nSamplesDefault = 10;
 
     //classifiy the isolated components
-    for (auto componentFaces : m_isolatedComponents)
+#pragma omp parallel for
+    //for (auto componentFaces : m_isolatedComponents)
+    for (int componentId = 0; componentId < m_isolatedComponents.size(); ++componentId)
     {
+        const auto& componentFaces = m_isolatedComponents[componentId];
+
         //pick 5 random sample vertices from this component
         std::random_device rd{};
         std::default_random_engine rng(rd());
         std::uniform_int_distribution<int> randomSamples(0, static_cast<int>(componentFaces.size() - 1));
 
-        std::array<bool, nSamples> votes;
+        const int nSamples = std::min(nSamplesDefault, (int)componentFaces.size()); //no need to compute 10 samples, if there is only one face, it will be 10 times the same point...
 
+        std::vector<bool> votes(nSamples);
+
+//#pragma omp parallel for
         for (int i = 0; i < nSamples; ++i)
         {
             auto fh = OpenMesh::make_smart(componentFaces[randomSamples(rng)], m_mesh);
