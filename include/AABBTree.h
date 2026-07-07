@@ -209,8 +209,9 @@ namespace DMB
 
     public: //methods
 
-        AABBTree(int maxNodeCount = 4) : 
-            m_maxNodeCount(maxNodeCount)
+        AABBTree(int maxNodeCount = 4, int maxDepth = 32) : 
+            m_maxNodeCount(maxNodeCount),
+            m_maxDepth(maxDepth)
         {
 
         }
@@ -283,7 +284,7 @@ namespace DMB
                 auto& node = m_nodes[nodeIdx];
 
                 //node count is lower than requested max node count -> this is a leaf node
-                if (node.faces.size() < m_maxNodeCount)
+                if (node.faces.size() < m_maxNodeCount || node.depth >= m_maxDepth)
                 {
                     //node processed
                     nodesToProcess.pop();
@@ -351,6 +352,7 @@ namespace DMB
         std::vector<tFace> m_faces;
 
         int m_maxNodeCount;
+        int m_maxDepth;
     };
 }
 
