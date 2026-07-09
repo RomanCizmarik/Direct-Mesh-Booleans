@@ -3824,11 +3824,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             for (auto [key, val] : labelToLabelingVolumeMap)
             {
-                //if (val > maxVolume)
-                //{
-                //    maxVolume = val;
-                //    seedLabel = key;
-                //}
+                if (val > maxVolume)
+                {
+                    maxVolume = val;
+                    seedLabel = key;
+                }
 
                 if (val > 1e-3)
                 {
@@ -3841,12 +3841,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
+            bool conflictingVolumeClassification = false;
             for (auto [key, val] : labelToMaxLabelingVolumeMap)
             {
-                if (val > maxVolume)
+                if (val == maxVolume && seedLabel != key)
                 {
-                    maxVolume = val;
-                    seedLabel = key;
+                    conflictingVolumeClassification = true;
                 }
             }
 
@@ -3859,15 +3859,14 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                 }
             }
 
-            //e-surface default 
-            seedLabel = 0;
+            
 
             if (componentId < maxComponents)
             {
                 //std::cout << "maxVolume:" << maxVolume << " seedLabel: " << seedLabel  << std::endl;
                 //std::cout << "conflictingMaxVolumeClassification:" << conflictingMaxVolumeClassification << " degeneratedVolumesOnly: " << degeneratedVolumesOnly<< " allReasonalbleVolumes: " << allReasonalbleVolumes << std::endl;
 
-                if (conflictingMaxVolumeClassification && degeneratedVolumesOnly)
+                if (conflictingVolumeClassification && conflictingMaxVolumeClassification && degeneratedVolumesOnly)
                 {
                     //e-surface classic
                     seedLabel = 0;
@@ -3878,6 +3877,11 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     //try fwn cut
                     useFloodLabeling = false;
                 }
+            }
+            else
+            {
+                //e-surface default 
+                seedLabel = 0;
             }
             
 
