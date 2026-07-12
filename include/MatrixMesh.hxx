@@ -2598,7 +2598,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             assigneIntersectionCurveIds();
 
-#if 0
+#if 1
             for (auto fh : component)
             {
                 //if (intersectionFace[fh])
@@ -3959,7 +3959,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         m_mesh.status(fh).set_tagged(false);
     }
 
-#if 1
+#if 0
     //deal with dangling not labeled components
     if (!notLabeledComponents.empty())
     {
