@@ -25,10 +25,20 @@ DEFAULT_AXIS_TICK_FONT_SIZE = 18
 MIN_POS_FLOAT = float(np.nextafter(0.0, 1.0))
 DISPLAY_NAME_ALIASES = {
     "direct_mesh_booleans": "DMB",
-    "direct_mesh_booleans_extension": "DMB_extension",
+    "direct_mesh_booleans_extension": "DMB++",
     "mine": "DMB",
-    "mine_extension": "DMB_extension",
+    "mine_extension": "DMB++",
+    "DMB_extension": "DMB++",
+    "dmb_extension": "DMB++",
+    "geogram": "Geogram",
+    "libigl": "Libigl",
+    "volume_mesher": "VolumeMesher",
+    "volumemesher": "VolumeMesher",
 }
+PREFERRED_METHOD_ORDER: Sequence[str] = ("Geogram", "Libigl", "VolumeMesher", "DMB", "DMB++")
+PREFERRED_METHOD_COLORS: Dict[str, str] = dict(
+    zip(PREFERRED_METHOD_ORDER, px.colors.qualitative.D3[: len(PREFERRED_METHOD_ORDER)])
+)
 
 BASE_FONT_SIZE = DEFAULT_BASE_FONT_SIZE
 AXIS_TITLE_FONT_SIZE = DEFAULT_AXIS_TITLE_FONT_SIZE
@@ -52,7 +62,36 @@ def _safe_int(value: Any) -> int:
 
 def _method_display_name(name: str) -> str:
     key = str(name).strip()
-    return DISPLAY_NAME_ALIASES.get(key, key)
+    if key in DISPLAY_NAME_ALIASES:
+        return DISPLAY_NAME_ALIASES[key]
+    key_lower = key.lower()
+    if key_lower in DISPLAY_NAME_ALIASES:
+        return DISPLAY_NAME_ALIASES[key_lower]
+    return key
+
+
+def _ordered_methods(rows: Sequence[Dict[str, Any]]) -> List[str]:
+    discovered = {str(r.get("method", "")).strip() for r in rows if str(r.get("method", "")).strip()}
+    ordered = [m for m in PREFERRED_METHOD_ORDER if m in discovered]
+    ordered_set = set(ordered)
+    extras = sorted(discovered - ordered_set)
+    return ordered + extras
+
+
+def _method_color_map(methods: Sequence[str]) -> Dict[str, str]:
+    palette = px.colors.qualitative.D3
+    colors: Dict[str, str] = {}
+    for method in methods:
+        if method in PREFERRED_METHOD_COLORS:
+            colors[method] = PREFERRED_METHOD_COLORS[method]
+
+    extra_idx = 0
+    for method in methods:
+        if method in colors:
+            continue
+        colors[method] = palette[(len(PREFERRED_METHOD_ORDER) + extra_idx) % len(palette)]
+        extra_idx += 1
+    return colors
 
 
 def _regime_label_from_config(run_dir: Path) -> str:
@@ -302,12 +341,17 @@ def _build_grouped_chamfer_ecdf_figure(
     fig.update_layout(
         legend_title="Method",
         legend=dict(
+            orientation="h",
+            x=0.5,
+            xanchor="center",
+            y=-0.08,
+            yanchor="top",
             title_font=dict(size=36, family=FONT_FAMILY),
             font=dict(size=34, family=FONT_FAMILY),
         ),
     )
     fig = _apply_layout(fig)
-    fig.update_layout(height=max(1300, 420 * len(metric_specs)), width=1650, margin=dict(l=80, r=170, t=130, b=70))
+    fig.update_layout(height=max(1300, 420 * len(metric_specs)), width=1650, margin=dict(l=80, r=40, t=130, b=220))
     return fig
 
 
@@ -528,9 +572,8 @@ def main() -> int:
     run_a_short_label = str(args.run_a_short_label)
     run_b_short_label = str(args.run_b_short_label)
 
-    methods = sorted({str(r["method"]) for r in run_a_rows} | {str(r["method"]) for r in run_b_rows})
-    palette = px.colors.qualitative.D3
-    colors = {m: palette[i % len(palette)] for i, m in enumerate(methods)}
+    methods = _ordered_methods([*run_a_rows, *run_b_rows])
+    colors = _method_color_map(methods)
 
     created_files: List[str] = []
     warnings: List[str] = []
