@@ -314,7 +314,6 @@ def _build_grouped_chamfer_ecdf_figure(
             if log_x:
                 fig.update_xaxes(type="log", row=row_idx, col=col_idx)
         fig.update_yaxes(
-            title_text="Percentile",
             row=row_idx,
             col=1,
             range=[0.0, 1.0],
@@ -358,15 +357,15 @@ def _build_grouped_chamfer_ecdf_figure(
         font=dict(size=30, family=FONT_FAMILY),
     )
     fig.update_layout(
-        legend_title="Method",
+        #legend_title="Method",
         legend=dict(
             orientation="h",
             x=0.5,
             xanchor="center",
             y=-0.08,
             yanchor="top",
-            title_font=dict(size=36, family=FONT_FAMILY),
-            font=dict(size=34, family=FONT_FAMILY),
+            title_font=dict(size=32, family=FONT_FAMILY),
+            font=dict(size=32, family=FONT_FAMILY),
         ),
     )
     fig = _apply_layout(fig)
