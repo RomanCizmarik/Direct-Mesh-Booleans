@@ -356,20 +356,35 @@ def _build_grouped_chamfer_ecdf_figure(
         xanchor="center",
         font=dict(size=30, family=FONT_FAMILY),
     )
+    fig.add_annotation(
+        x=-0.075,
+        y=0.5,
+        xref="paper",
+        yref="paper",
+        text="Cumulative fraction of successful cases",
+        textangle=-90,
+        showarrow=False,
+        xanchor="center",
+        yanchor="middle",
+        font=dict(size=AXIS_TITLE_FONT_SIZE, family=FONT_FAMILY),
+    )
     fig.update_layout(
-        #legend_title="Method",
+        legend_title="Method: ",
         legend=dict(
             orientation="h",
             x=0.5,
             xanchor="center",
-            y=-0.08,
-            yanchor="top",
-            title_font=dict(size=32, family=FONT_FAMILY),
-            font=dict(size=32, family=FONT_FAMILY),
+            y=-0.12,
+            yanchor="middle",
+            title_font=dict(size=34, family=FONT_FAMILY),
+            font=dict(size=34, family=FONT_FAMILY),
+            itemsizing='constant',
+            valign="middle",
         ),
+        legend_valign="middle",
     )
     fig = _apply_layout(fig)
-    fig.update_layout(height=max(1300, 420 * len(metric_specs)), width=1650, margin=dict(l=80, r=40, t=130, b=220))
+    fig.update_layout(height=max(1300, 420 * len(metric_specs)), width=1650, margin=dict(l=150, r=40, t=130, b=220))
     return fig
 
 
