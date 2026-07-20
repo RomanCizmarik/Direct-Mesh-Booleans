@@ -286,6 +286,8 @@ def _build_grouped_chamfer_ecdf_figure(
         vertical_spacing=0.08,
         horizontal_spacing=0.05,
     )
+    percentile_ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
+    percentile_tick_labels = ["0", "0.25", "0.5", "0.75", "1.0"]
     run_cols = [(1, run_a_rows), (2, run_b_rows)]
     for row_idx, (metric, metric_title) in enumerate(metric_specs, start=1):
         for col_idx, rows in run_cols:
@@ -311,7 +313,24 @@ def _build_grouped_chamfer_ecdf_figure(
             fig.update_xaxes(title_text=metric_title, row=row_idx, col=col_idx)
             if log_x:
                 fig.update_xaxes(type="log", row=row_idx, col=col_idx)
-        fig.update_yaxes(title_text="Fraction of successful cases", row=row_idx, col=1, range=[0.0, 1.0])
+        fig.update_yaxes(
+            title_text="Percentile",
+            row=row_idx,
+            col=1,
+            range=[0.0, 1.0],
+            tickmode="array",
+            tickvals=percentile_ticks,
+            ticktext=percentile_tick_labels,
+        )
+        fig.update_yaxes(
+            row=row_idx,
+            col=2,
+            range=[0.0, 1.0],
+            tickmode="array",
+            tickvals=percentile_ticks,
+            ticktext=percentile_tick_labels,
+            showticklabels=True,
+        )
     col_a = str(run_a_short_label).replace(" ", "-")
     col_b = str(run_b_short_label).replace(" ", "-")
     dom_a = list(getattr(fig.layout, "xaxis").domain) if getattr(fig.layout, "xaxis", None) is not None else [0.0, 0.45]
