@@ -1334,10 +1334,18 @@ inline void DMB::MatrixMesh<MeshType>::computeComponentsVolume(MeshArrangement<M
             ma.m_faceComponentId[m_tIdToOriginalTId[pFhToMaFh[fh]]] = ma.m_componentsVolume.size();
         }
 
-        int sign = calcVolumeSignExact(component);
-        double volume = calcSignedVolume(component);
+        int sign = calcComponentVolumeSignExact(m_mesh, component);
+        double volume = calcComponentSignedVolume(m_mesh, component);
         double volumeSize = std::abs(volume);
-        ma.m_componentsVolume.push_back(volumeSize * sign);
+
+        double l = 1.0;
+        {
+            auto bb = DMB::calcComponentBoundingBox(m_mesh, component);
+            auto bbExtents = bb.m_max - bb.m_min;
+            l = (double)std::max({ bbExtents[0], bbExtents[1], bbExtents[2] });
+        }
+
+        ma.m_componentsVolume.push_back((volumeSize * sign) / (std::pow(l, 3.0)));
     }
 }
 
@@ -1662,10 +1670,10 @@ inline void DMB::MatrixMesh<MeshType>::buildOperand(const MeshArrangement<MeshTy
 }
 
 template<typename MeshType>
-inline void DMB::MatrixMesh<MeshType>::buildDebugMesh()
+inline void DMB::MatrixMesh<MeshType>::buildDebugMesh(MatrixMesh<MeshType>& other)
 {
 
-    //transferArrangementPropertiesToMesh();
+    transferArrangementPropertiesToMesh();
     //detectBoundaries();
     //handleCoplanarFaces();
 
@@ -3720,7 +3728,7 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
         bool unclosedCurve = false;
         bool componentLabeled = false;
 
-        double largestComponentVolume = std::numeric_limits<double>::lowest();
+        //double largestComponentVolume = std::numeric_limits<double>::lowest();
         double largestComponentId = -1;
 
 
@@ -3816,6 +3824,8 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
 
             double maxVolume = std::numeric_limits<double>::lowest();
 
+            double Vth = 1e-3;
+
             //assume conflicting labeling will be resolved
             conflictingLabeling = false;
 
@@ -3830,12 +3840,12 @@ inline bool DMB::MatrixMesh<MeshType>::disconnectComponents(MeshArrangement<Mesh
                     seedLabel = key;
                 }
 
-                if (val > 1e-3)
+                if (std::fabs(val) > Vth)
                 {
                     degeneratedVolumesOnly = false;
                 }
 
-                if (val < 1e-3)
+                if (std::fabs(val) < Vth)
                 {
                     allReasonalbleVolumes = false;
                 }
@@ -4678,131 +4688,6 @@ inline void DMB::MatrixMesh<MeshType>::handleCoplanarFaces()
         }
     }
 
-}
-
-template<typename MeshType>
-inline double DMB::MatrixMesh<MeshType>::calcSignedVolume(const std::vector<OpenMesh::SmartFaceHandle>& component)
-{
-
-    //http://chenlab.ece.cornell.edu/Publication/Cha/icip01_Cha.pdf
-    //https://www.ams.org/journals/mcom/1986-46-173/S0025-5718-1986-0815838-7/S0025-5718-1986-0815838-7.pdf
-    //https://dsp.stackexchange.com/questions/7856/calculating-the-volume-of-a-triangular-mesh
-
-    double volume = 0;
-
-    tPoint centroid(0, 0, 0);
-
-    {
-        std::unordered_set<tVertexHandle> vertices;
-
-        for (auto fh : component)
-        {
-            for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
-            {
-                vertices.insert(vh);
-            }
-        }
-
-        for (auto vh : vertices)
-        {
-            centroid += m_mesh.point(vh);
-        }
-
-        centroid /= vertices.size();
-    }
-
-    for (auto fh : component)
-    {
-        std::vector<tPoint> pts{};
-
-        for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
-        {
-            pts.push_back(m_mesh.point(vh) - centroid);
-        }
-        
-        typename MeshType::Scalar v =  (
-            -pts[2][0] * pts[1][1] * pts[0][2]
-            + pts[1][0] * pts[2][1] * pts[0][2]
-            + pts[2][0] * pts[0][1] * pts[1][2]
-            - pts[0][0] * pts[2][1] * pts[1][2]
-            - pts[1][0] * pts[0][1] * pts[2][2]
-            + pts[0][0] * pts[1][1] * pts[2][2]
-            );
-
-        volume += v;
-    }
-
-    return volume; // should be multiplied by (1.0 / 6.0), but it does not make a difference for my use case
-}
-
-template<typename MeshType>
-inline bigfloat DMB::MatrixMesh<MeshType>::calcSignedVolumeExact(const std::vector<OpenMesh::SmartFaceHandle>& component)
-{
-    bigfloat volume = 0;
-
-    tExactPoint centroid;
-    centroid[0] = bigfloat(0);
-    centroid[1] = bigfloat(0);
-    centroid[2] = bigfloat(0);
-
-
-    {
-        std::unordered_set<tVertexHandle> vertices;
-
-        for (auto fh : component)
-        {
-            for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
-            {
-                vertices.insert(vh);
-            }
-        }
-
-        for (auto vh : vertices)
-        {
-            centroid[0] = centroid[0] + bigfloat(m_mesh.point(vh)[0]);
-            centroid[1] = centroid[1] + bigfloat(m_mesh.point(vh)[1]);
-            centroid[2] = centroid[2] + bigfloat(m_mesh.point(vh)[2]);
-        }
-
-        centroid[0] = centroid[0] * bigfloat((1.0 / (double)vertices.size()));
-        centroid[1] = centroid[1] * bigfloat((1.0 / (double)vertices.size()));
-        centroid[2] = centroid[2] * bigfloat((1.0 / (double)vertices.size()));
-    }
-
-
-    for (auto fh : component)
-    {
-        std::vector<tExactPoint> pts;
-
-        for (auto vh : OpenMesh::make_smart(fh, m_mesh).vertices())
-        {
-            tExactPoint p;
-            p[0] = bigfloat(m_mesh.point(vh)[0]) - centroid[0];
-            p[1] = bigfloat(m_mesh.point(vh)[1]) - centroid[1];
-            p[2] = bigfloat(m_mesh.point(vh)[2]) - centroid[2];
-
-            pts.push_back(p);
-        }
-
-        bigfloat v = (
-            - pts[2][0] * pts[1][1] * pts[0][2]
-            + pts[1][0] * pts[2][1] * pts[0][2]
-            + pts[2][0] * pts[0][1] * pts[1][2]
-            - pts[0][0] * pts[2][1] * pts[1][2]
-            - pts[1][0] * pts[0][1] * pts[2][2]
-            + pts[0][0] * pts[1][1] * pts[2][2]
-            );
-
-        volume = volume + v;
-    }
-
-    return volume; // should be multiplied by (1.0 / 6.0), but it does not make a difference for my use case
-}
-
-template<typename MeshType>
-inline int DMB::MatrixMesh<MeshType>::calcVolumeSignExact(const std::vector<OpenMesh::SmartFaceHandle>& component)
-{
-    return calcSignedVolumeExact(component).sgn();
 }
 
 template<typename MeshType>

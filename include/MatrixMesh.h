@@ -70,7 +70,7 @@ namespace DMB
 
         bool buildManifoldMesh(bool considerOrigin = false);
         bool resolveNmfVerticesInHalfedgeMesh();
-        void buildDebugMesh();
+        void buildDebugMesh(MatrixMesh<MeshType>& other);
 
         void flipToConsistentOrientation(MeshArrangement<MeshType>& ma);
         void adjustOrientation(MeshArrangement<MeshType>& ma);
@@ -239,10 +239,6 @@ namespace DMB
         void transferArrangementPropertiesToMesh();
         void detectBoundaries();
         void handleCoplanarFaces();
-
-        double calcSignedVolume(const std::vector<OpenMesh::SmartFaceHandle>& component);
-        bigfloat calcSignedVolumeExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
-        int calcVolumeSignExact(const std::vector<OpenMesh::SmartFaceHandle>& component);
 
         uint addVertex(double x, double y, double z, uint MAVhId);
         uint addNewFace(uint vh0, uint vh1, uint vh2);
