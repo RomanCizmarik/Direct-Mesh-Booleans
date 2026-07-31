@@ -124,8 +124,8 @@ Example (single method):
 python benchmark\scripts\run_pipeline.py `
   --config benchmark\config\default_config.json `
   --method-config benchmark\config\methods\direct_mesh_booleans.json `
-  --input-a C:\skola\PhD\Direct-Mesh-Booleans\data\sphere1.obj `
-  --input-b C:\skola\PhD\Direct-Mesh-Booleans\data\sphere2.obj `
+  --input-a sphere1.obj `
+  --input-b sphere2.obj `
   --op union `
   --output-dir benchmark\artifacts\sphere_test_dmb_cfg `
   --case-name sphere_pair_test
@@ -137,8 +137,8 @@ Example (all methods in `config\methods`):
 python benchmark\scripts\run_pipeline.py `
   --config benchmark\config\default_config.json `
   --methods-dir benchmark\config\methods `
-  --input-a C:\skola\PhD\Direct-Mesh-Booleans\data\sphere1.obj `
-  --input-b C:\skola\PhD\Direct-Mesh-Booleans\data\sphere2.obj `
+  --input-a sphere1.obj `
+  --input-b sphere2.obj `
   --op union `
   --output-dir benchmark\artifacts\sphere_test_methods_template `
   --case-name sphere_pair_test
@@ -234,7 +234,7 @@ python benchmark\scripts\run_pipeline.py `
   --output-dir C:\path\to\output
 ```
 
-## Key outputs per case
+## Outputs per case
 
 - `case_result.json` (full metadata, cut logs, metrics)
 - `results_cases.json` / `results_cases.csv` contain a compact per-case summary (status, method runtime/memory/status, core geometry metrics)
