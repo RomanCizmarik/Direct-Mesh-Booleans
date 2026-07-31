@@ -1,4 +1,4 @@
-# Broken-input Boolean benchmark (Python)
+# LeakyMesh benchmark generation framework (Python)
 
 This folder contains a Python benchmark pipeline for:
 1. closed-input reference Boolean `X` via libigl,
