@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum policy override for legacy deps")
 
 # ============================================================
 # Project
@@ -46,6 +47,7 @@ target_include_directories(DirectMeshBooleans
 target_compile_definitions(DirectMeshBooleans
     PUBLIC
         _HAS_STD_BYTE=0
+        CINOLIB_USES_SHEWCHUK_PREDICATES
 )
 
 # ============================================================
@@ -126,11 +128,6 @@ else()
     target_link_libraries(Cinolib
         INTERFACE
             Eigen3::Eigen
-    )
-
-    target_compile_definitions(Cinolib
-        INTERFACE
-            CINOLIB_USES_SHEWCHUK_PREDICATES
     )
 
     # ------------------------------------------------------------
