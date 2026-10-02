@@ -63,8 +63,25 @@ if(DMB_PROVIDE_OWN_DEPENDENCIES)
 
     # ---- OpenMesh ----
     find_package(OpenMesh CONFIG REQUIRED)
-    add_library(OpenMeshCore  ALIAS OpenMesh::Core)
-    add_library(OpenMeshTools ALIAS OpenMesh::Tools)
+    if(NOT TARGET OpenMeshCore)
+        if(TARGET OpenMesh::OpenMeshCore)
+            add_library(OpenMeshCore ALIAS OpenMesh::OpenMeshCore)
+        elseif(TARGET OpenMesh::Core)
+            add_library(OpenMeshCore ALIAS OpenMesh::Core)
+        else()
+            message(FATAL_ERROR "OpenMesh package does not provide an OpenMeshCore target")
+        endif()
+    endif()
+
+    if(NOT TARGET OpenMeshTools)
+        if(TARGET OpenMesh::OpenMeshTools)
+            add_library(OpenMeshTools ALIAS OpenMesh::OpenMeshTools)
+        elseif(TARGET OpenMesh::Tools)
+            add_library(OpenMeshTools ALIAS OpenMesh::Tools)
+        else()
+            message(FATAL_ERROR "OpenMesh package does not provide an OpenMeshTools target")
+        endif()
+    endif()
 
     # ---- FaRMA ----
     # External projects MUST provide a FaRMA target
